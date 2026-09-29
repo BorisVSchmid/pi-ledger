@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.22
+
+- Validate against Pi 0.99.0, including an offline real-host package-loading probe.
+- Declare imported host packages as wildcard peers and pin development dependencies to Pi 0.99.0.
+- Use the host TypeBox schema package for tools.
+
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
 ### [0.5.5](https://github.com/monotykamary/pi-supervisor/compare/v0.5.4...v0.5.5) (2026-07-08)

@@ -22,7 +22,7 @@ import { updateUI, toggleWidget } from './ui/renderer.js';
 import { pickModel } from './ui/model-picker.js';
 import { loadGlobalModel, saveGlobalModel } from './global-config.js';
 import { disposeSession } from './session/client.js';
-import { Type } from '@sinclair/typebox';
+import { Type } from 'typebox';
 import { checkChildPiProcesses, waitForSubagents } from './subagent-detector.js';
 import { detectMidRunSignals } from './state/mid-run-signals.js';
 import { registerFabricProvider } from './fabric-provider.js';
