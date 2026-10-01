@@ -11,6 +11,10 @@ _Observe every turn, steer when the agent drifts, signal when the goal is reache
 
 </div>
 
+## Pi 1.0 compatibility (0.5.23)
+
+Development SDKs are pinned to **1.0.0**; host-provided dependencies remain wildcard peers. Run `bun run test:pi` for offline real-host registrations, prompt/tool loadouts, nested calls, reload and shutdown. Set `PI1_HOST_PACKAGE` to an installed Pi package directory and `PI1_HOST_ENTRY=bundle` to check its bundled runtime.
+
 ---
 
 > A supervisor as the intelligent overseer keeping the agent on track.

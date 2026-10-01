@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.23
+
+- Pin development SDKs to Pi 1.0.0 while retaining host-owned wildcard peers.
+- Exercise actual SDK and bundled host lifecycle, identity, native nested validation/loadouts, reload and shutdown offline.
+- Fix real child sessions losing parent-native providers: forward through the public model registry, preserve cwd, scope reuse to the parent registry, and honor pre-aborted/active cancellation.
+
 ## 0.5.22
 
 - Validate against Pi 0.99.0, including an offline real-host package-loading probe.
