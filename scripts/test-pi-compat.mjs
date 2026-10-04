@@ -66,9 +66,9 @@ try {
   await writeFile(
     identityPath,
     `import { AgentSession } from '@earendil-works/pi-coding-agent';
-import { SupervisorSession } from '${pathToFileURL(join(root, 'src/session/supervisor-session.ts')).href}';
+import { ModelSession } from '${pathToFileURL(join(root, 'src/ledger/model-session.ts')).href}';
 export default function (pi) {
-  pi.on('session_start', (_event, ctx) => { globalThis[Symbol.for('pi1.supervisor.offline')] = { ctx, controller: new SupervisorSession() }; });
+  pi.on('session_start', (_event, ctx) => { globalThis[Symbol.for('pi1.supervisor.offline')] = { ctx, controller: new ModelSession() }; });
   if (AgentSession !== globalThis[Symbol.for('pi1.workflow.identity')]) throw new Error('Duplicate host constructor');
 }`
   );
@@ -179,7 +179,7 @@ export default function (pi) {
   const command = {
     'pi-reason-harness': 'reason',
     'pi-recurse': 'recurse-status',
-    '@monotykamary/pi-supervisor': 'supervise',
+    'pi-ledger': 'ledger',
     '@monotykamary/pi-tps': 'tps-export',
     'pi-tps-web': 'tps-web',
     'pi-var': 'var',

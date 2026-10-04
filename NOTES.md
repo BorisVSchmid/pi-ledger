@@ -1,6 +1,57 @@
-# Ledger mode: implementation notes
+# pi-ledger: implementation notes
 
-Working notes for implementing `ledger-mode-brief/DESIGN_BRIEF.md` in this fork.
+Working notes for `brief/DESIGN_BRIEF.md`. Deliverables 1 to 8 below were built as "ledger
+mode" inside the pi-supervisor fork; the split into the standalone pi-ledger is the first
+section. Older sections keep their original paths (`ledger-mode-brief/`, `examples/ledger-mode/`,
+`/supervise register`), which are now `brief/`, `examples/project/` and `/ledger register`.
+
+## Split into pi-ledger (2026-10-04)
+
+Boris decided on one plugin with one job (integrity), goal mode removed rather than switched
+off, no `/supervise`. Defaults taken without asking, per his preference:
+
+- **Same repository, new package name.** `package.json` is now `pi-ledger` 0.1.0, built on a
+  branch of `BorisVSchmid/pi-supervisor`. Renaming the GitHub repository (or moving to a new one)
+  is Boris's call; `repository`/`homepage` point at the current repo until then. `LICENSE` keeps
+  the upstream MIT notice unchanged.
+- **Removed:** `src/core`, `src/state`, `src/compaction`, `src/session/client.ts` and
+  `response-parser.ts`, `src/ui/renderer.ts`/`animations.ts`/`types.ts`, `src/fabric-provider.ts`,
+  `src/subagent-detector.ts`, `src/types.ts`, `src/global-config.ts`, the `start_supervision` tool,
+  `media/` (the upstream demo), and their tests. Kept: the in-memory model session (moved to
+  `src/ledger/model-session.ts`, class `ModelSession`) and the model picker (`src/ui/model-*`).
+- **Commands:** `/ledger [status] | on | off | register | metrics | model`, `/review`, `/flag`.
+  `register` and `metrics` moved from `/supervise`. `model` replaces `/supervise model` and writes
+  `reviewer.model`. `/review` refuses while the ledger is off; `/flag` works either way.
+- **On/off:** on at session start when `files.ledger` exists (`autoEnable`, default true),
+  otherwise off. `/ledger on|off` is stored in the session state (`enabled`) and wins over
+  `autoEnable` on reload. Off means no monitor, no reviewer, no run log, no status line.
+- **Status line** (`src/ledger/status.ts`, Pi `ctx.ui.setStatus('ledger', …)`): Acceptance items
+  are `- AC<n>: …` under `## Acceptance`; an item is passed only when its last `AC<n> status:`
+  line (anywhere in the ledger) says passed and cites `R<n>`. The convention mirrors the
+  existing `C1 status: passed (R4)` for Checks and is added to the MEMENTO template and AGENTS
+  snippet. "ledger behind" means the last turn had a D1/D2 finding; this needed one new state
+  field, `lastTurnFindings`, set in `runtime.onSettled`. The line refreshes after each turn,
+  `/flag`, `/ledger on|off`, and when a background review finishes.
+- **Config:** `.pi/ledger-config.json`, then `<agentDir>/ledger-config.json`; at each location
+  the legacy `supervisor-config.json` is read if the new file is absent, and its old top-level
+  `model` becomes `reviewer.model` when that is unset. `mode` and `upstream` keys are gone (and
+  ignored if present). `reviewer.model: null` now means the chat model (there is no separate
+  supervisor model any more).
+- **Session entry types kept:** `supervisor-ledger-state` and `supervisor-compaction-note` keep
+  their names so sessions started under the fork still load.
+- **Renamed directories:** `ledger-mode-brief/` to `brief/`, `examples/ledger-mode/` to
+  `examples/project/`, example config to `ledger-config.json`.
+- **CI:** `.github/workflows/test.yml` now also triggers on `master` (it only listed `main`, so
+  it never ran). It still uses `bun install --frozen-lockfile`; the lockfile's root name was
+  updated to `pi-ledger`, but bun here cannot read the lockfile, so whether CI installs cleanly is
+  untested.
+- **CREDITS.md** is Boris's longer version (the "How it differs" sections), reworded where it
+  described ledger mode as a mode of pi-supervisor, with one factual fix: the compaction
+  paragraph said `beforeCompaction` asks the agent for a ledger update; the code starts a
+  background review instead. Citation corrections raised earlier (Luo et al., Self-Correction
+  Bench 2025, the relevance of "Agents That Edit Documents") are not applied; they wait on Boris.
+  It still mentions an "optional anchor re-injection" that is not implemented.
+- **Not done:** no live Pi run of the split plugin yet (tests and the offline Pi probe only).
 
 ## Starting point
 

@@ -1,17 +1,15 @@
 /**
- * Ledger-mode configuration.
+ * pi-ledger configuration.
  *
- * Read from <cwd>/.pi/supervisor-config.json, falling back to
- * <agentDir>/supervisor-config.json (~/.pi/agent by default). The first file
- * that exists and parses wins; missing keys take the defaults below.
- * Defaults keep upstream behaviour: mode is "goal" unless set to "ledger".
+ * Read from <cwd>/.pi/ledger-config.json, then <agentDir>/ledger-config.json
+ * (~/.pi/agent by default). The legacy name supervisor-config.json is read
+ * at each location when ledger-config.json is absent. The first file that
+ * exists and parses wins; missing keys take the defaults below.
  */
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { getAgentDir } from '@earendil-works/pi-coding-agent';
-
-export type SupervisorMode = 'goal' | 'ledger';
 
 export interface ReviewerTriggers {
   onRegisterChange: boolean;
@@ -23,9 +21,10 @@ export interface ReviewerTriggers {
 }
 
 export interface LedgerConfig {
-  mode: SupervisorMode;
+  /** Switch on at session start when the ledger file exists (until /ledger on|off says otherwise). */
+  autoEnable: boolean;
   reviewer: {
-    /** "provider/modelId"; null means use the supervisor model. */
+    /** "provider/modelId"; null means use the chat model. */
     model: string | null;
     fallbackModel: string | null;
     thinking: 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
@@ -58,21 +57,18 @@ export interface LedgerConfig {
     neverRepeatSteer: boolean;
   };
   compaction: {
-    /** After each compaction, add a supervisor note flagging stale statements in the summary. */
+    /** After each compaction, add a ledger note flagging stale statements in the summary. */
     annotateSummaries: boolean;
-  };
-  upstream: {
-    reframeEscalation: boolean;
-    idleContinueIsNoop: boolean;
-    doneEnabled: boolean;
   };
 }
 
-export const CONFIG_FILE = 'supervisor-config.json';
+export const CONFIG_FILE = 'ledger-config.json';
+/** Read when ledger-config.json is absent, so projects set up for the fork keep working. */
+export const LEGACY_CONFIG_FILE = 'supervisor-config.json';
 
 export function defaultConfig(): LedgerConfig {
   return {
-    mode: 'goal',
+    autoEnable: true,
     reviewer: {
       model: null,
       fallbackModel: null,
@@ -119,11 +115,6 @@ export function defaultConfig(): LedgerConfig {
     compaction: {
       annotateSummaries: true,
     },
-    upstream: {
-      reframeEscalation: false,
-      idleContinueIsNoop: true,
-      doneEnabled: false,
-    },
   };
 }
 
@@ -159,12 +150,32 @@ function readJson(path: string): unknown | undefined {
 
 /** Load the config for `cwd`. Never throws; falls back to defaults. */
 export function loadLedgerConfig(cwd: string, agentDir: string = getAgentDir()): LedgerConfig {
-  const raw = readJson(join(cwd, '.pi', CONFIG_FILE)) ?? readJson(join(agentDir, CONFIG_FILE));
+  const raw = readConfigFile(cwd, agentDir);
   const config = merge(defaultConfig(), raw);
-  if (config.mode !== 'ledger') config.mode = 'goal';
+  // The fork kept the supervisor model as { model: { provider, modelId } }; use it for the reviewer.
+  const legacy = isPlainObject(raw) && isPlainObject(raw.model) ? raw.model : undefined;
+  if (!config.reviewer.model && legacy?.provider && legacy?.modelId) {
+    config.reviewer.model = `${String(legacy.provider)}/${String(legacy.modelId)}`;
+  }
   return config;
 }
 
-export function isLedgerMode(config: LedgerConfig | null | undefined): boolean {
-  return config?.mode === 'ledger';
+function readConfigFile(cwd: string, agentDir: string): unknown | undefined {
+  for (const dir of [join(cwd, '.pi'), agentDir]) {
+    const raw = readJson(join(dir, CONFIG_FILE)) ?? readJson(join(dir, LEGACY_CONFIG_FILE));
+    if (raw !== undefined) return raw;
+  }
+  return undefined;
+}
+
+/** Set `reviewer.model` in <cwd>/.pi/ledger-config.json, keeping other keys. Returns the path. */
+export function saveReviewerModel(cwd: string, ref: string): string {
+  const dir = join(cwd, '.pi');
+  const file = join(dir, CONFIG_FILE);
+  const existing = readJson(file);
+  const out: Record<string, unknown> = isPlainObject(existing) ? existing : {};
+  out.reviewer = { ...(isPlainObject(out.reviewer) ? out.reviewer : {}), model: ref };
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(file, JSON.stringify(out, null, 2) + '\n', 'utf-8');
+  return file;
 }

@@ -1,5 +1,5 @@
 /**
- * Ledger-mode commands: /flag and /supervise register|metrics.
+ * Command helpers: /flag and /ledger register|metrics.
  * Handlers return the text to show; the caller decides how to show it.
  */
 

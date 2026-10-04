@@ -1,10 +1,10 @@
 /**
  * model-sort.ts — integration with the pi-model-sort extension.
  *
- * The supervisor's model picker copies pi-core's /model selector. To "work
+ * The reviewer model picker copies pi-core's /model selector. To "work
  * together with" pi-model-sort (which monkey-patches pi-core's selector to
  * sort by last usage), we read pi-model-sort's persisted timestamps and
- * re-apply the identical sort order here, so the supervisor picker lists
+ * re-apply the identical sort order here, so the reviewer picker lists
  * models in the user's actual usage order — matching what they see in pi's
  * own /model selector.
  *

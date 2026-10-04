@@ -15,7 +15,7 @@ import { LedgerRuntime } from '../src/ledger/runtime.js';
 import { defaultConfig } from '../src/ledger/config.js';
 
 const SPEC = readFileSync(
-  join(__dirname, '..', 'ledger-mode-brief', 'templates', 'MODEL_SPEC.template.md'),
+  join(__dirname, '..', 'brief', 'templates', 'MODEL_SPEC.template.md'),
   'utf8'
 );
 

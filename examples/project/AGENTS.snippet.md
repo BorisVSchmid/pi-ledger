@@ -8,7 +8,9 @@
 - Before any fit, analysis or experiment, add one line under Checks stating
   the expected result and what would count as failure. Lines under Acceptance
   and Checks are append-only: resolve a check by appending a line such as
-  `- C1 status: passed (R4)`; never edit or remove an existing line.
+  `- C1 status: passed (R4)`; never edit or remove an existing line. Acceptance
+  items are resolved the same way (`- AC1 status: passed (R12)`), only with a
+  run id, and only when the run meets the line as written.
 - Claims that something fits, works or converges need a run id and, where it
   exists, held-out evidence.
 - When a result refutes a recorded item, move it to Crossed out with the run
@@ -24,6 +26,6 @@
 - Aim and MODEL_SPEC.md belong to the human. Propose changes in your reply.
 - Questions for the human go to the human. A "Ledger check" message is a
   request to record, cite or reconcile; it is not an answer to your question.
-- A "Supervisor note on the compaction summary" lists statements in the summary
+- A "Ledger note on the compaction summary" lists statements in the summary
   that the ledger has since crossed out or contradicted. Trust MEMENTO.md over
   the summary for those items.

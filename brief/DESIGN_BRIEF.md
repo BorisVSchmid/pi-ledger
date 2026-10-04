@@ -1,11 +1,18 @@
-# Design brief: ledger mode for the pi-supervisor fork
+# Design brief: pi-ledger
 
-For the Claude Code project working on the fork of monotykamary/pi-supervisor.
-This brief is the source of truth for scope and design. Where it conflicts
-with upstream behaviour, ledger mode wins; upstream behaviour must remain
-intact when `mode` is anything other than `ledger`.
+*Surely You're Joking.*
 
-Repository facts this brief relies on (verify during orientation):
+For the Claude Code project building pi-ledger. This brief is the source of
+truth for scope and design.
+
+pi-ledger began as a "ledger mode" inside a fork of monotykamary/pi-supervisor
+and is now a standalone Pi extension derived from it (decision of 2026-10-04,
+section 3). It keeps the fork's infrastructure (separate in-memory model
+session, session-file persistence, hooks, model picker) and has none of its
+goal logic. Upstream mergeability is given up.
+
+Upstream facts the original brief relied on (verified during orientation; the
+goal-specific parts no longer exist in this repository):
 - Pi extension with hooks `session_start`, `before_agent_start`, `tool_call`,
   `turn_end`, `agent_end`, `session_before_compact`.
 - Supervisor runs in a separate in-memory Pi session; input built by an
@@ -37,13 +44,25 @@ and expected. Two things must not drift silently:
 The plugin flags; the human decides. It never pushes the agent toward
 finishing, narrowing or changing course.
 
+**One plugin, one job.** pi-ledger does integrity: keep the ledger and the
+model honest. It is meant to be on for the whole of a research session.
+Convergence (keeping the agent going until something is done) is a different,
+situational job that belongs to a loop driver such as pi-autoresearch,
+pi-multiloop's research mode, or upstream pi-supervisor. The definition of done
+lives in the ledger as Aim plus Acceptance and is shared by both jobs:
+pi-ledger reports the Acceptance status as a fact (status line, section 5.2),
+never as a judgment, and never acts on it. Running a loop driver next to
+pi-ledger, with both injecting steers, is untested.
+
 ## 2. Non-goals
 
-- No goal-completion supervision, no `done`, no reframe escalation.
+- No goal-completion supervision, no `done`, no reframe escalation, no idle
+  nudges, no iteration control. These are a loop driver's job (section 1).
+- No "task" or "explore" sub-modes and no mode switch.
 - No running of tests, simulations or analyses. Checking by execution is a
   separate tool outside this plugin.
 - No judgment of scientific direction or quality.
-- No reading of reasoning traces or tool outputs. The supervisor sees
+- No reading of reasoning traces or tool outputs. The plugin sees
   visible text, the ledger, the spec and the model source files.
 - No automatic steering on anything a model judged. Only two deterministic
   findings may steer the agent without a human decision.
@@ -63,6 +82,8 @@ finishing, narrowing or changing course.
 | Acceptance and Checks sections are append-only; edits are flagged | Prevents the agent from redefining success after seeing results. |
 | Superseded claims live in an archive, one-line tombstone in the ledger | Old values in context keep winning over updates. |
 | Register is updated by small edits, never rewritten | Monolithic rewriting collapses accumulated context. |
+| A standalone extension with one job (integrity), not a mode of pi-supervisor (2026-10-04) | The two designs share infrastructure, not purpose: one drives the agent toward a goal, the other refuses to. A mode switch made every code path conditional, doubled the tests and gave `/supervise` two meanings. |
+| Completion is visible but not acted on: the status line reports Acceptance from the ledger | Gives the human completion visibility without a model judging "done" and without steering. |
 
 ## 4. Architecture
 
@@ -79,8 +100,10 @@ monitor: code only                           reviewer: capable model, fresh sess
  (optional turnModel: 4 narrow ledger checks)        → .pi/FLAGS.md + notice + register export
 ```
 
-Human commands: `/flag` (list), `/flag <id> intended|dismiss [reason]`,
-`/flag <id> send`, `/review [note]`, `/supervise register`, `/supervise metrics`.
+Human commands: `/ledger [status]`, `/ledger on|off`, `/ledger register`,
+`/ledger metrics`, `/ledger model`, `/review [note]`, `/flag` (list),
+`/flag <id> intended|dismiss [reason]`, `/flag <id> send`. There is no
+`/supervise` and no frame argument: the frame is the ledger's Aim.
 
 ## 5. Components
 
@@ -98,7 +121,7 @@ Use them as-is; extend rather than rewrite.
 
 ### 5.2 Monitor (per turn)
 
-In `agent_end`, before anything else, when `mode === "ledger"`:
+In `agent_settled` (Pi 1.0's settled hook; see NOTES.md), when the ledger is on:
 
 1. Build the ledger block (`buildLedgerBlock` with `previousLedgerHash`).
 2. D1: `parseLedgerLine(lastAssistantVisibleText)`; missing → `LEDGER_LINE_MISSING`.
@@ -109,6 +132,23 @@ In `agent_end`, before anything else, when `mode === "ledger"`:
    reviewer; store `after` as the next `before`.
 6. D5: `cjkRatio` on the assistant text and on the ledger diff.
 7. Route (section 7). Then store `previousLedgerHash/Text`.
+
+Status line (after every turn, review and `/flag` answer), computed, never
+judged, shown with Pi's `setStatus`:
+
+    Acceptance 1/3 passed · 2 open flags · ledger current
+
+- Acceptance: items are `- AC<n>: …` bullets under `## Acceptance`. An item is
+  passed when the last `AC<n> status: …` line anywhere in the ledger says
+  `passed` and cites a run id (`R<n>`); `passed` without a run id stays open.
+  No Acceptance section reads `no Acceptance`.
+- Flags: open reviewer flags.
+- Ledger: `ledger current`, `ledger behind` (a D1/D2 finding on the last turn),
+  `locked section edited` (D3), `ledger not checked yet`, or `no MEMENTO.md`.
+- `reviewing…` while a review runs.
+
+On/off: on at session start when the ledger file exists (`autoEnable`), else
+off; `/ledger on|off` overrides this and is persisted in the session.
 
 `tool_call`: if the command starts with an entry of `runCommands`, append
 `{turn, ts, cmd, cwd}` to `runs.jsonl` (append-only). Nothing else.
@@ -173,26 +213,29 @@ Steer templates (code constants):
 
 ### 5.5 State and persistence
 
-In the Pi session (as upstream persists supervisor state): `register`,
+In the Pi session (a custom session entry, as upstream persisted its state): `register`,
 `previousLedgerHash`, `previousLedgerText`, `modelSnapshot` (or its hash map
 plus a path to a cached copy if size is a concern), `pendingDiff`,
 `lastReviewTurn`, `steerHistory`, `metrics`. On `session_start`, if
 `files.spec` exists, seed `register.concepts[P].stated` from each `## P<n>`
 heading (value = first bullet, source `"spec"`).
 
-### 5.6 Upstream behaviours to switch off in ledger mode
+### 5.6 Upstream code removed
 
-- Reframe escalation: tier stays 0; no tier guidance injected.
-- `done`: removed from the schema; the supervisor never ends supervision.
-- `continue` at idle: a no-op.
-- `[Session Goal]`, `[Current Status]`, `[Earlier Turns]`: not included.
-- Mid-run analysis: off by default.
+Removed outright rather than switched off: goal analysis and its prompt,
+reframe escalation, `done`, idle and mid-run steering, goal inference,
+`/supervise`, the `start_supervision` tool, the fabric provider, subagent
+waiting, the status widget, and the algorithmic compaction pipeline that built
+the goal supervisor's input. Kept: the in-memory model session (with parent
+provider forwarding) and the model picker.
 
 ## 6. Configuration
 
-See `config/supervisor-config.example.json`. Defaults keep upstream behaviour
-(`mode: "goal"`); ledger mode is opt-in. Config is read from
-`.pi/supervisor-config.json` in the project, falling back to the global file.
+See `config/ledger-config.example.json`. Read from `.pi/ledger-config.json` in
+the project, falling back to `ledger-config.json` in the Pi agent directory.
+At each location `supervisor-config.json` is read when `ledger-config.json` is
+absent, and its `model` key is used as the reviewer model when
+`reviewer.model` is unset. There is no `mode` key.
 
 ## 7. Deliverables, in order (stop and report after each)
 
@@ -202,6 +245,8 @@ See `config/supervisor-config.example.json`. Defaults keep upstream behaviour
    treated, whether a diff utility exists, whether `ctx.cwd` is in scope in
    the analyzer. Record the starting commit in `NOTES.md`. No code changes.
 2. **Config and mode switch.** New keys; `mode` gate; nothing else changes.
+   Superseded on 2026-10-04 by **restructure and rename**: split into the
+   standalone pi-ledger, goal code removed, `/ledger` commands, status line.
 3. **Monitor.** `checks.ts` wired into `before_agent_start` (snapshot),
    `tool_call` (runs), `agent_end` (D1–D5), routing for the three auto-steers
    and notices, `FLAGS.md` writer. Tests: D1/D2 both directions; D3; D5;
@@ -215,11 +260,11 @@ See `config/supervisor-config.example.json`. Defaults keep upstream behaviour
 6. **Upstream switches.** Reframe off, `done` removed, idle no-op, sections
    dropped, all gated on `mode`.
 7. **Optional turnModel path.**
-8. **Docs.** README section "Ledger mode"; `examples/ledger-mode/` with the
+8. **Docs.** README; `examples/project/` with the
    templates from `templates/`.
 
-Branch `ledger-mode`, one commit per deliverable. Keep diffs minimal and the
-fork mergeable with upstream.
+Deliverables 1 to 8 were built as ledger mode inside the fork; the
+restructure into pi-ledger followed. Upstream mergeability no longer applies.
 
 ## 8. Acceptance tests
 
@@ -241,8 +286,8 @@ model files. Seeded failures, each in its own fixture variant:
 Pass criteria for the code paths (model-independent): D1–D5 fire exactly on
 their fixtures and nowhere else; unverifiable quotes are dropped; a flag is
 created once; `intended` suppresses re-flagging including reversed locations;
-no steer is ever repeated; `continue` at idle is a no-op; reframe tier never
-increments in ledger mode.
+no steer is ever repeated; nothing happens at idle beyond the monitor; no code
+path judges completion or steers toward a goal.
 
 Pass criteria for the reviewer (model-dependent, report, do not gate the
 build): catches per seeded failure across 3 runs each, false flags per run,

@@ -4,8 +4,7 @@
  */
 
 import type { ExtensionContext } from '@earendil-works/pi-coding-agent';
-import { SupervisorSession } from '../session/supervisor-session.js';
-import { loadGlobalModel } from '../global-config.js';
+import { ModelSession } from './model-session.js';
 import { parseJsonObject } from './reviewer.js';
 
 export interface ModelRef {
@@ -21,12 +20,10 @@ export function parseModelRef(ref: string | null | undefined): ModelRef | null {
   return { provider: ref.slice(0, i), modelId: ref.slice(i + 1) };
 }
 
-/** Configured model, else the supervisor's model from config, else the chat model. */
+/** Configured model, else the chat model. */
 export function resolveModel(ref: string | null, ctx: ExtensionContext): ModelRef | null {
   const parsed = parseModelRef(ref);
   if (parsed) return parsed;
-  const global = loadGlobalModel();
-  if (global) return global;
   return ctx.model ? { provider: ctx.model.provider, modelId: ctx.model.id } : null;
 }
 
@@ -34,7 +31,7 @@ export type JsonCallResult =
   | { ok: true; json: unknown; model: ModelRef }
   | { ok: false; error: string; model: ModelRef | null };
 
-type Thinking = Parameters<SupervisorSession['ensureStarted']>[4];
+type Thinking = Parameters<ModelSession['ensureStarted']>[4];
 
 /** Call one model; on invalid JSON ask once more in the same session. */
 async function callOnce(
@@ -44,7 +41,7 @@ async function callOnce(
   userPrompt: string,
   thinking: string | undefined
 ): Promise<JsonCallResult> {
-  const session = new SupervisorSession();
+  const session = new ModelSession();
   try {
     const level = thinking && thinking !== 'off' ? (thinking as Thinking) : undefined;
     const started = await session.ensureStarted(

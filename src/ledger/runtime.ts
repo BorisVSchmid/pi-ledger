@@ -252,6 +252,7 @@ export class LedgerRuntime {
     });
 
     for (const f of findings) bump(state, `finding.${f.kind}`);
+    state.lastTurnFindings = findings.map((f) => f.kind);
     if (routed.suppressedSteers) bump(state, 'steer.suppressed', routed.suppressedSteers);
 
     let newNotices = 0;

@@ -1,6 +1,6 @@
 /**
- * SupervisorSession - reusable session for a single supervision goal.
- * Maintains context window across multiple analyses for token efficiency.
+ * ModelSession - an in-memory Pi session for one reviewer or check call.
+ * Delegates provider auth to the parent session's model registry.
  */
 
 import {
@@ -13,7 +13,7 @@ import type { ExtensionContext } from '@earendil-works/pi-coding-agent';
 
 type ThinkingLevel = NonNullable<ExtensionContext['thinkingLevel']>;
 
-export class SupervisorSession {
+export class ModelSession {
   private session: Awaited<ReturnType<typeof createAgentSession>>['session'] | null = null;
   private model: any = null;
   private systemPrompt: string = '';

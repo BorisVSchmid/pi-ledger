@@ -1,6 +1,6 @@
 /**
- * Ledger-mode state, persisted in the Pi session as a custom entry
- * (the same mechanism upstream uses for supervisor state).
+ * pi-ledger state, persisted in the Pi session as a custom entry.
+ * The entry type keeps its pi-supervisor name so existing sessions load.
  */
 
 import type { ExtensionAPI, ExtensionContext } from '@earendil-works/pi-coding-agent';
@@ -18,7 +18,11 @@ export interface Notice {
 
 export interface LedgerState {
   version: 1;
-  /** Completed agent runs observed in ledger mode. */
+  /** Set by /ledger on|off; null until then, and the config's autoEnable decides. */
+  enabled: boolean | null;
+  /** Finding kinds of the last observed turn (for the status line). */
+  lastTurnFindings: FindingKind[];
+  /** Completed agent runs observed while the ledger was on. */
   turn: number;
   /** MEMENTO.md at the end of the last observed turn. */
   previousLedgerHash: string | null;
@@ -44,6 +48,8 @@ export interface LedgerState {
 export function emptyLedgerState(): LedgerState {
   return {
     version: 1,
+    enabled: null,
+    lastTurnFindings: [],
     turn: 0,
     previousLedgerHash: null,
     previousLedgerText: null,

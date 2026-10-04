@@ -1,6 +1,6 @@
 /**
- * Prompts for ledger mode. REVIEWER and LEDGER_TURN are copied from
- * ledger-mode-brief/prompts/; REVIEWER now also covers flags already raised
+ * Prompts for pi-ledger. REVIEWER and LEDGER_TURN are copied from
+ * brief/prompts/; REVIEWER now also covers flags already raised
  * (openFlags, resolved, same_as), after a live run re-raised them. COMPACTION_NOTE is new: it checks a compaction
  * summary against the ledger (agreed with Boris, 2026-10-04).
  * A project can override each with .pi/REVIEWER.md, .pi/LEDGER_TURN.md,

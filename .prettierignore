@@ -39,7 +39,7 @@ media/*.mp4
 media/*.mov
 
 # Design brief, kept verbatim
-ledger-mode-brief/
+brief/
 
 # Test fixtures, kept as written
 tests/fixtures/

@@ -1,6 +1,6 @@
 /**
- * SupervisorModelSelectorComponent — a copy of pi-core's ModelSelectorComponent
- * used by the supervisor's own model picker (/supervise model).
+ * ReviewerModelSelectorComponent — a copy of pi-core's ModelSelectorComponent
+ * used by the reviewer model picker (/ledger model).
  *
  * Copies pi-core's /model selector to the tee:
  *   - DynamicBorder top + bottom borders
@@ -18,11 +18,11 @@
  *     the global theme may be undefined — see DynamicBorder's note). Passing
  *     the live theme in keeps borders and colors correct in extension mode.
  *   - No SettingsManager. pi-core's handleSelect() writes the choice into pi's
- *     global default model (the user's main chat model). The supervisor must
- *     NOT change the user's main model — it picks its own supervisor model,
- *     persisted by the caller to .pi/supervisor-config.json.
+ *     global default model (the user's main chat model). The picker must
+ *     NOT change the user's main model — it picks its own reviewer model,
+ *     persisted by the caller to .pi/ledger-config.json.
  *   - Sort respects pi-model-sort's last-used order when installed (see
- *     ./model-sort.ts), so the supervisor picker matches the user's /model
+ *     ./model-sort.ts), so the reviewer picker matches the user's /model
  *     ordering. Falls back to pi-core's provider sort otherwise.
  */
 
@@ -78,7 +78,7 @@ function currentModelKey(model: Model<any> | undefined): string | null {
   return buildModelKey(model.provider, model.id);
 }
 
-export class SupervisorModelSelectorComponent extends Container {
+export class ReviewerModelSelectorComponent extends Container {
   // Focusable — propagate to searchInput for IME cursor positioning
   private _focused = false;
   get focused(): boolean {
@@ -430,7 +430,7 @@ export class SupervisorModelSelectorComponent extends Container {
 
   private handleSelect(model: Model<any>): void {
     // Unlike pi-core, do NOT write the user's global default model — the
-    // supervisor picks its own model. The caller persists the choice.
+    // the picker chooses the reviewer model. The caller persists the choice.
     this.onSelect(model);
   }
 

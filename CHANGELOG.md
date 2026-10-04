@@ -1,5 +1,15 @@
 # Changelog
 
+## pi-ledger 0.1.0
+
+- Split out of the pi-supervisor fork as a standalone extension with one job: keep the ledger and the model honest.
+- Removed goal supervision entirely (goal analysis, reframe tiers, `done`, idle steering, goal inference, the status widget, the `start_supervision` tool, the fabric provider, subagent waiting, and the algorithmic compaction used to build the supervisor's input).
+- Removed `/supervise` and the `mode` switch. Commands are now `/ledger [status] | on | off | register | metrics | model`, `/review` and `/flag`.
+- Added a status line computed from the ledger: `Acceptance 1/3 passed · 2 open flags · ledger current`.
+- Config moves to `.pi/ledger-config.json`; `supervisor-config.json` is still read when the new file is absent.
+
+## pi-supervisor history (upstream, before the split)
+
 ## 0.5.23
 
 - Pin development SDKs to Pi 1.0.0 while retaining host-owned wildcard peers.

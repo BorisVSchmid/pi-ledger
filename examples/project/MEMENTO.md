@@ -6,6 +6,7 @@ Aim (human-owned; propose changes, do not edit):
 ## Acceptance (locked)
 
 - AC1: <what counts as success, against which data; e.g. held-out years 2019–2021>
+- AC1 status: passed (R12) (append a status line with the run id; never edit the line above)
 
 ## Assumptions
 

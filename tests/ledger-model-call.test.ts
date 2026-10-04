@@ -4,8 +4,8 @@ const behaviour: Record<string, { start: boolean; replies: Array<string | null> 
 const started: string[] = [];
 const disposed: string[] = [];
 
-vi.mock('../src/session/supervisor-session.js', () => ({
-  SupervisorSession: class {
+vi.mock('../src/ledger/model-session.js', () => ({
+  ModelSession: class {
     private key = '';
     async ensureStarted(
       _ctx: unknown,
