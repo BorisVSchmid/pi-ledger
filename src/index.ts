@@ -28,6 +28,12 @@ import { detectMidRunSignals } from './state/mid-run-signals.js';
 import { registerFabricProvider } from './fabric-provider.js';
 import { createInitialState, type WidgetState } from './ui/types.js';
 import {
+  defaultConfig,
+  isLedgerMode,
+  loadLedgerConfig,
+  type LedgerConfig,
+} from './ledger/config.js';
+import {
   extractMessages,
   buildCompactionSummary,
   formatForSupervisor,
@@ -80,6 +86,9 @@ export default function (pi: ExtensionAPI) {
   const widgetState = createInitialState();
   let currentCtx: ExtensionContext | undefined;
   let userInputEpoch = 0;
+  // Ledger mode is opt-in via .pi/supervisor-config.json ("mode": "ledger").
+  // Every ledger-mode behaviour is gated on this; goal mode is unchanged.
+  let ledgerConfig: LedgerConfig = defaultConfig();
 
   pi.on('input', (event) => {
     if (event.source === 'interactive' || event.source === 'rpc') {
@@ -131,6 +140,10 @@ export default function (pi: ExtensionAPI) {
 
   const onSessionLoad = (ctx: ExtensionContext) => {
     currentCtx = ctx;
+    ledgerConfig = loadLedgerConfig(ctx.cwd);
+    if (isLedgerMode(ledgerConfig)) {
+      ctx.ui.notify('Supervisor: ledger mode', 'info');
+    }
     state.loadFromSession(ctx);
 
     if (state.isActive() && ctx.isIdle()) {

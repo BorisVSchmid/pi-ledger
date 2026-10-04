@@ -21,14 +21,14 @@ All facts below were read from source in this repo and from the installed
 
 ### Hooks: brief vs. source
 
-| Brief says | Source says |
-|---|---|
-| Supervisor decides in `agent_end` | Idle decision is in **`agent_settled`** (`src/index.ts:232`). README line 122 still says `agent_end`; the README is stale. `agent_end` is not used. |
-| `session_start` | Used, registered **twice** (`src/index.ts:145-149`); the first handler runs on every reason, so the second is redundant. |
-| `before_agent_start` | Used only to bump `userInputEpoch` (`src/index.ts:89`). |
-| `tool_call` | **Not used** anywhere. Exists in Pi (`ExtensionAPI.on("tool_call")`); bash calls arrive as `BashToolCallEvent` with `toolName: "bash"` and `input.command`. |
-| `turn_end` | Used for mid-run analysis, gated on `detectMidRunSignals` (`src/index.ts:201-229`). |
-| `session_before_compact` | Used only to persist state (`src/index.ts:153`). |
+| Brief says                        | Source says                                                                                                                                                 |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Supervisor decides in `agent_end` | Idle decision is in **`agent_settled`** (`src/index.ts:232`). README line 122 still says `agent_end`; the README is stale. `agent_end` is not used.         |
+| `session_start`                   | Used, registered **twice** (`src/index.ts:145-149`); the first handler runs on every reason, so the second is redundant.                                    |
+| `before_agent_start`              | Used only to bump `userInputEpoch` (`src/index.ts:89`).                                                                                                     |
+| `tool_call`                       | **Not used** anywhere. Exists in Pi (`ExtensionAPI.on("tool_call")`); bash calls arrive as `BashToolCallEvent` with `toolName: "bash"` and `input.command`. |
+| `turn_end`                        | Used for mid-run analysis, gated on `detectMidRunSignals` (`src/index.ts:201-229`).                                                                         |
+| `session_before_compact`          | Used only to persist state (`src/index.ts:153`).                                                                                                            |
 
 Recommendation: run the ledger monitor in `agent_settled`, as upstream does. Pi documents it as
 firing once after retries, overflow compaction and queued follow-ups are done, so D1–D5 see the
@@ -36,20 +36,20 @@ final assistant text once per user prompt. `agent_end` can fire for a run that i
 
 ### Role → file map
 
-| Role | Where |
-|---|---|
-| Idle analysis + steer/done routing | `src/index.ts:232-337` (`agent_settled`) |
-| Mid-run analysis | `src/index.ts:201-229` (`turn_end`), signals in `src/state/mid-run-signals.ts` |
-| Supervisor input assembly | `src/core/analyzer.ts` → `src/compaction/index.ts` (`extractMessages`, `buildCompactionSummary`, `formatForSupervisor`) → `src/core/prompt-builder.ts` (`buildUserPrompt`) |
-| System prompt | `src/core/prompt-loader.ts`: `<cwd>/.pi/SUPERVISOR.md`, then `~/.pi/agent/SUPERVISOR.md`, then the built-in prompt |
-| Model call | `src/session/client.ts` → `src/session/supervisor-session.ts` (in-memory `createAgentSession`, `tools: []`, providers delegated to the parent registry) |
-| Response parsing | `src/session/response-parser.ts` (`parseDecision`; invalid JSON → `continue`) |
-| State | `src/state/manager.ts`, type `SupervisorState` in `src/types.ts` |
-| Persistence | `pi.appendEntry('supervisor-state', state)` on every change; `loadFromSession` takes the last such custom entry on the active branch (`src/state/manager.ts:110-129`) |
-| Reframe tier increment | `src/index.ts:264-267`: `detectIneffectivePattern()` → `escalateReframeTier()`. `detectIneffectivePattern` (`src/state/patterns.ts`) also fires on 60 s without a steer, so the tier climbs on stagnation alone. |
-| Reframe guidance text | `src/core/reframe.ts`, injected by `buildUserPrompt` |
-| `done` | Schema in `src/types.ts:37`, parser accepts it, handled at `src/index.ts:314-320` (stops supervision) |
-| Config | `src/global-config.ts`: only `model: {provider, modelId}`, read from `join(process.cwd(), '.pi/supervisor-config.json')` |
+| Role                               | Where                                                                                                                                                                                                            |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Idle analysis + steer/done routing | `src/index.ts:232-337` (`agent_settled`)                                                                                                                                                                         |
+| Mid-run analysis                   | `src/index.ts:201-229` (`turn_end`), signals in `src/state/mid-run-signals.ts`                                                                                                                                   |
+| Supervisor input assembly          | `src/core/analyzer.ts` → `src/compaction/index.ts` (`extractMessages`, `buildCompactionSummary`, `formatForSupervisor`) → `src/core/prompt-builder.ts` (`buildUserPrompt`)                                       |
+| System prompt                      | `src/core/prompt-loader.ts`: `<cwd>/.pi/SUPERVISOR.md`, then `~/.pi/agent/SUPERVISOR.md`, then the built-in prompt                                                                                               |
+| Model call                         | `src/session/client.ts` → `src/session/supervisor-session.ts` (in-memory `createAgentSession`, `tools: []`, providers delegated to the parent registry)                                                          |
+| Response parsing                   | `src/session/response-parser.ts` (`parseDecision`; invalid JSON → `continue`)                                                                                                                                    |
+| State                              | `src/state/manager.ts`, type `SupervisorState` in `src/types.ts`                                                                                                                                                 |
+| Persistence                        | `pi.appendEntry('supervisor-state', state)` on every change; `loadFromSession` takes the last such custom entry on the active branch (`src/state/manager.ts:110-129`)                                            |
+| Reframe tier increment             | `src/index.ts:264-267`: `detectIneffectivePattern()` → `escalateReframeTier()`. `detectIneffectivePattern` (`src/state/patterns.ts`) also fires on 60 s without a steer, so the tier climbs on stagnation alone. |
+| Reframe guidance text              | `src/core/reframe.ts`, injected by `buildUserPrompt`                                                                                                                                                             |
+| `done`                             | Schema in `src/types.ts:37`, parser accepts it, handled at `src/index.ts:314-320` (stops supervision)                                                                                                            |
+| Config                             | `src/global-config.ts`: only `model: {provider, modelId}`, read from `join(process.cwd(), '.pi/supervisor-config.json')`                                                                                         |
 
 ### Specific questions from deliverable 1
 
@@ -167,3 +167,32 @@ brief does not otherwise do. Raised as an open question below.
    `mode: "ledger"`, with no goal and no kickoff message?
 7. Compaction-summary edits: accept the design above, and should the code-only check
    (summary text matching a `Crossed out` item) be allowed to propose without a reviewer call?
+
+## Decisions taken (2026-10-04)
+
+Boris asked me to proceed on my own defaults rather than answer the detailed questions:
+
+1. Checks status is recorded on a new appended line (`- C1 status: passed (R4)`); D3 stays strict.
+2. `mode: "ledger"` in config activates the monitor on every session start, with no goal and no
+   kickoff message.
+3. Compaction-summary edits follow the design above; a code-only check may propose an edit.
+4. Reviewer model: unset by default (falls back to the supervisor model); configure when known.
+5. `maxModelFileChars` 120k; `onBreakpoint` does not fire on `Crossed out` additions; `FLAGS.md`
+   lives under `.pi/`.
+
+Correction to the compaction section: any extension can write the summary itself through
+`session_before_compact` (Pi ships `examples/extensions/custom-compaction.ts`, which replaces the
+summary with its own). What Pi cannot do is edit an existing summary in place with
+`context_edit`. Ledger mode therefore has two routes: annotate at compaction time (generate the
+normal summary, then append a stale-items note drawn from `MEMENTO.md`), and propose edits to an
+existing summary for acceptance as described above.
+
+## Deliverable 2: config and mode switch
+
+- `src/ledger/config.ts`: `LedgerConfig` with every key from the example config plus
+  `compaction.proposeSummaryEdits`; `loadLedgerConfig(cwd)` reads `<cwd>/.pi/supervisor-config.json`,
+  else `<agentDir>/supervisor-config.json`; type-checked merge over defaults; unknown modes fall
+  back to `goal`.
+- `src/index.ts`: config loaded on each session load; ledger mode shows a notice. No other
+  behaviour changes in either mode.
+- `tests/ledger-config.test.ts`: 6 tests. Suite: 15 files, 212 tests pass; `tsc` clean.
