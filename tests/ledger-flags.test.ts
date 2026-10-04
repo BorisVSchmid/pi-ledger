@@ -94,26 +94,13 @@ describe('flag dedup', () => {
 });
 
 describe('close reasons', () => {
-  const store = emptyFlags();
-  addFlag(store, c1Flag('a', 'q'), 1);
-  addFlag(store, { ...c1Flag('b', 'q'), concept: 'P3 Foxes' }, 1);
-  const [f1, f2] = store.flags;
-  const reason = (words: string) => closeReason(store, f2, words.split(' ').filter(Boolean));
+  const reason = (words: string) => closeReason(words.split(' ').filter(Boolean));
 
-  it('requires a few words of why; bare verdicts are refused', () => {
+  it('requires a few words of why; bare verdicts and shorthands are refused', () => {
     expect(reason('')).toEqual({ error: expect.stringMatching(/^Say why/) });
     expect(reason('intended')).toHaveProperty('error');
-    expect(reason('not an')).toHaveProperty('error');
+    expect(reason('dup F1')).toHaveProperty('error');
     expect(reason('fixed in fit.R:40')).toEqual({ reason: 'fixed in fit.R:40' });
-  });
-
-  it('dup must name another existing flag', () => {
-    expect(reason('dup f1')).toEqual({ reason: 'duplicate of F1' });
-    expect(reason('dup F1 same C1 range')).toEqual({ reason: 'duplicate of F1: same C1 range' });
-    expect(reason('dup')).toHaveProperty('error');
-    expect(reason('dup F9')).toHaveProperty('error');
-    expect(reason('dup F2')).toHaveProperty('error');
-    expect(f1.status).toBe('open');
   });
 
   it('keeps free text as typed', () => {

@@ -487,12 +487,12 @@ export class LedgerRuntime {
       if (words.length === 0 && ctx.hasUI) {
         const typed = await ctx.ui.input(
           `Why close ${flag.id}? (${oneLineQuestion(flag)})`,
-          'why, in a few words (or dup F<n>)'
+          'why, in a few words'
         );
         words = (typed ?? '').trim().split(/\s+/).filter(Boolean);
         if (words.length === 0) return `${flag.id} not closed: no reason given.`;
       }
-      const r = closeReason(store, flag, words);
+      const r = closeReason(words);
       if ('error' in r) return `${flag.id} not closed. ${r.error}`;
       closeFlag(store, flag, r.reason);
       if (config && needsInterpretation(r.reason)) this.startInterpretation(ctx, config, flag);

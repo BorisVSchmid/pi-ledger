@@ -40,9 +40,9 @@ commands). Defaults taken without asking:
   text prompt (in RPC/print mode, without a UI, it is refused with a one-line hint); a cancelled
   or empty prompt closes nothing. The reason is free text of at least three words, because a bare
   `fixed` or `intended` says that, not why; Boris rejected presets like these as
-  non-explanations. The one shorthand is `dup F<n>` (must name another flag), since it names
-  something. Closed flags go to the reviewer as the human's answer, so the reason is what
-  stops the same doubt coming back in other words.
+  non-explanations and asked for no shorthands at all (not even `dup F<n>`), for clarity.
+  Closed flags go to the reviewer as the human's answer, so the reason is what stops the same
+  doubt coming back in other words.
 - **Model interpretation of terse reasons** (Boris, 2026-10-04). After a close with a reason of
   12 words or fewer, the reviewer model writes one sentence on what the reason means for that
   flag (`CLOSE_INTERPRETATION_PROMPT`, overridable as `.pi/CLOSE_INTERPRETATION.md`). It runs in
