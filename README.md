@@ -48,7 +48,7 @@ Acceptance 1/3 passed · 2 open flags · ledger current
 
 - **Acceptance**: `- AC1: …` bullets under `## Acceptance`. An item counts as passed when its last
   status line (`- AC1 status: passed (R12)`) says passed and cites a run id. "passed" without a run
-  id stays open.
+  id stays open. The status line belongs under Acceptance, but one written elsewhere still counts.
 - **Flags**: reviewer questions you have not answered.
 - **Ledger**: `ledger current`, `ledger behind` (the last turn's `Ledger:` line was missing or did
   not match the file), `locked section edited`, or `no LEDGER.md`.
@@ -63,7 +63,7 @@ pi-ledger is untested.
 
 | Command                       |                                                                         |
 | ----------------------------- | ----------------------------------------------------------------------- |
-| `/ledger` or `/ledger status` | status line plus each Acceptance item                                   |
+| `/ledger` or `/ledger status` | status line, each Acceptance item, and the ledger's word count          |
 | `/ledger on` / `/ledger off`  | switch on or off for this session (remembered across reloads)           |
 | `/ledger metrics`             | counters                                                                |
 | `/review [note]`              | review the model now                                                    |
@@ -93,6 +93,18 @@ external compartment, per-week rates in a per-day model, seasonality in two laye
 Every quote and location is checked in code; findings that do not verify are dropped, and a
 question already open is merged into its flag rather than raised again. Prefer a reviewer from a
 different model family than the working agent.
+
+**Stale flags.** Flags are never closed for you, because a close needs your reason. After every
+run and review the quotes of open flags are checked again (anywhere in the file, since lines move).
+A flag whose quote is gone, say about a Next item that has since been replaced, is marked
+`evidence gone` in `/flag` and `.pi/FLAGS.md`. A review may also point to a ledger entry that
+answers an open flag (its quote is verified); the flag is marked `possibly answered by
+LEDGER.md#D7`. The digest after each review lists all such flags so you can close them.
+
+**Ledger size.** The snippet asks the agent to keep `LEDGER.md` under about 2,000 words by
+condensing Observed, Crossed out, done Next items and tested Assumptions into
+`LEDGER.archive.md`. Acceptance and Checks are never condensed or moved. `/ledger status` shows
+the word count.
 
 **After compaction.** The reviewer model reads the new summary with `LEDGER.md` and `MODEL_SPEC.md`
 only, and adds a separate note listing statements in the summary that differ from the ledger. The

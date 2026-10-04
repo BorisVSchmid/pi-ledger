@@ -5,6 +5,43 @@ mode" inside the pi-supervisor fork; the split into the standalone pi-ledger and
 simplification after it come first. Older sections keep their original paths (`ledger-mode-brief/`, `examples/ledger-mode/`,
 `/supervise register`); the first two are now `brief/` and `examples/project/`, the register is gone.
 
+## Fixes from the second live run (2026-10-04)
+
+Four issues from Boris's vole/mast run. Defaults taken without asking:
+
+- **Spurious "edit" review after `/flag F39 send`.** The suspected cause (no baseline for a run
+  started by `sendUserMessage`) does not hold: Pi 1.0.0's `sendUserMessage` goes through
+  `prompt()`, which emits `before_agent_start`. Confirmed in real Pi with a scripted model (a
+  model edit, its review, `/flag F1 send`, a ledger-only run: one review) and in
+  `tests/ledger-live-fixes.test.ts`. Two paths that do produce a review for a run that edited no
+  model file were reproduced in tests and fixed: (1) `onAgentStart` kept an existing baseline,
+  so one left by a prompt that emitted `before_agent_start` and then never ran made the next run
+  count edits made between runs as its own; the baseline is now retaken every time (Pi emits the
+  event once per run; prompts queued mid-run join the run without one). (2) A `/review` run while
+  the agent works sees the run's edits, and the run's end then reviewed them again; an edit review
+  now needs a file that differs from the last review's snapshot (`review.skipped_seen` counts the
+  skips). The notice names the files ("edit: R/fit.R, +2 more"), so if a spurious review recurs
+  it shows which file started it. One more candidate, not changed: the default `modelFiles`
+  include `models/**/*`, so a script that writes outputs under `models/` counts as a model edit.
+- **Stale open flags.** Never closed automatically. After every run and every review the quotes of
+  open flags are re-checked anywhere in their file, ledger or spec (`sideStillThere`: the line
+  number is dropped, since lines move). Missing quotes set `evidenceGone` (cleared if the quote
+  comes back); the flag shows `· evidence gone` and an "Evidence gone" line in `/flag` and
+  FLAGS.md, and FLAGS.md counts "possibly stale" flags. For a flag answered by a later decision
+  whose evidence still exists, the reviewer may return `answered: [{id, loc, quote}]`; only ledger
+  locations whose quote verifies are kept, stored as `answeredBy` and shown as "Possibly answered
+  by". Both marks are listed in the post-review digest ("Possibly stale"). The reviewer sees
+  `evidence_gone` in the [Flags] block. Only open flags are marked; sent flags are left alone.
+- **Ledger growth.** Checks stay append-only and in the ledger: they are the pre-registration
+  record, and moving them would trip D3. The snippet now names what may be condensed or moved to
+  LEDGER.archive.md (Observed, Crossed out, done Next items, tested Assumptions) and what may not
+  (Acceptance, Checks); the template headings say the same. `/ledger status` adds "Ledger: N
+  words" and, above 2,000, what to condense. The status line itself is unchanged, to keep it short.
+- **AC status placement.** The status line already read AC status lines anywhere in the ledger;
+  kept, with a test for one under Checks. The snippet now says AC status lines go under
+  Acceptance. The brief template's inline `— status:` on Checks lines (which contradicted
+  append-only) is replaced by appended status lines, as in the example.
+
 ## Simplification (2026-10-04, after the split)
 
 Boris asked whether the plugin could be simpler, taking the PC run's view on what earned its

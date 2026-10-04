@@ -431,7 +431,9 @@ export function routeFindings(
 //
 // An Acceptance item is a bullet with an id under "## Acceptance" ("- AC1: …").
 // It counts as passed when the last status line for that id, anywhere in the
-// ledger, says passed and cites a run id ("AC1 status: passed (R12)").
+// ledger, says passed and cites a run id ("AC1 status: passed (R12)"). The
+// snippet asks for status lines under Acceptance, but one written elsewhere
+// (under Checks, say) still counts.
 
 export type AcceptanceStatus = 'open' | 'passed' | 'failed';
 
@@ -532,12 +534,29 @@ export function statusLine(input: {
   return parts.join(' · ');
 }
 
-/** Multi-line detail for /ledger status. */
+/** The size the AGENTS.md snippet asks the agent to keep the ledger under. */
+export const LEDGER_WORD_TARGET = 2000;
+
+export function wordCount(text: string): number {
+  return text.split(/\s+/).filter(Boolean).length;
+}
+
+/** Multi-line detail for /ledger status: Acceptance items, then the ledger's size. */
 export function statusDetail(ledgerText: string | null): string {
   const acc = acceptanceSummary(ledgerText);
-  if (!acc.present) return 'The ledger has no Acceptance section.';
-  if (acc.items.length === 0) return 'The Acceptance section has no items (e.g. "- AC1: …").';
-  return acc.items
-    .map((i) => `${i.id} ${i.status}${i.run ? ` (${i.run})` : ''}: ${i.text}`)
-    .join('\n');
+  const lines = !acc.present
+    ? ['The ledger has no Acceptance section.']
+    : acc.items.length === 0
+      ? ['The Acceptance section has no items (e.g. "- AC1: …").']
+      : acc.items.map((i) => `${i.id} ${i.status}${i.run ? ` (${i.run})` : ''}: ${i.text}`);
+  if (ledgerText !== null) {
+    const n = wordCount(ledgerText);
+    const fmt = (x: number) => x.toLocaleString('en-US');
+    lines.push(
+      n > LEDGER_WORD_TARGET
+        ? `Ledger: ${fmt(n)} words, over the ~${fmt(LEDGER_WORD_TARGET)}-word target. Condense Observed and Crossed out (full text to LEDGER.archive.md); Acceptance and Checks stay as written.`
+        : `Ledger: ${fmt(n)} words.`
+    );
+  }
+  return lines.join('\n');
 }

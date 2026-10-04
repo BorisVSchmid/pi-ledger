@@ -10,13 +10,19 @@
   and Checks are append-only: resolve a check by appending a line such as
   `- C1 status: passed (R4)`; never edit or remove an existing line. Acceptance
   items are resolved the same way (`- AC1 status: passed (R12)`), only with a
-  run id, and only when the run meets the line as written.
+  run id, and only when the run meets the line as written. Put AC status lines
+  under Acceptance and C status lines under Checks.
 - Claims that something fits, works or converges need a run id and, where it
   exists, held-out evidence.
 - When a result refutes a recorded item, move it to Crossed out with the run
   id and a one-line reason. Keep full text in LEDGER.archive.md.
 - Edit sections in place; never regenerate the whole file. Keep it under
-  ~2,000 words.
+  ~2,000 words (`/ledger status` shows the count). To make room, condense
+  Observed (one line per result; superseded results go to Crossed out),
+  Crossed out (one-line tombstones), done Next items (remove them) and tested
+  Assumptions, and move the full text to LEDGER.archive.md. Never condense,
+  move or reword Acceptance or Checks: they record what was promised before
+  each run.
 - End every turn with exactly one line:
   `Ledger: <ids changed> — <≤15 words>` or `Ledger: unchanged`.
 - Code that implements a modelling process carries a tag on the line above:
