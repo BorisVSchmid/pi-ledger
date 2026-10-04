@@ -32,7 +32,10 @@ import {
   findFlag,
   migrateRegister,
   renderFlag,
+  recheckEvidence,
   renderFlagsFile,
+  staleFlags,
+  staleLine,
   steerTextFor,
   type Flag,
   type FlagStore,
@@ -48,6 +51,7 @@ import {
   renderCompactionNote,
   REVIEWER_PROMPT,
   reviewNotice,
+  sideStillThere,
   verifyDiffItems,
   verifyReview,
   type ReviewReason,
@@ -223,9 +227,13 @@ export class LedgerRuntime {
 
   // ---------- monitor ----------
 
-  /** Take the baseline once per run; queued prompts before settlement keep the first one. */
+  /**
+   * Take the baseline for this run. Pi emits before_agent_start once per run
+   * (prompts queued during a run join it without a new event), so a baseline
+   * still here is from a prompt that never ran and is replaced: keeping it
+   * would count edits made between runs as this run's.
+   */
   async onAgentStart(ctx: ExtensionContext, config: LedgerConfig): Promise<void> {
-    if (this.baseline) return;
     const [ledger, snapshot] = await Promise.all([
       readTextOrNull(this.file(ctx, config.files.ledger)),
       this.snapshot(ctx, config),
@@ -280,25 +288,62 @@ export class LedgerRuntime {
       bump(state, 'steer.sent');
     }
 
-    const specChanged = await this.specChanged(ctx, config);
+    const spec = await readTextOrNull(this.file(ctx, config.files.spec));
+    const specChanged = this.specChanged(spec);
+    const marksChanged = recheckEvidence(state.flags, (side) =>
+      sideStillThere(side, this.verifyContext(config, after, ledgerAfter, spec))
+    );
+    if (marksChanged) bump(state, 'flag.marks_changed');
+
+    // Files this run changed that the last review has not seen. A review
+    // started during the run (/review runs while the agent works) may already
+    // have seen them.
+    let editedFiles = modelDiff
+      ? [...modelDiff.changed, ...modelDiff.added, ...modelDiff.removed]
+      : [];
+    if (editedFiles.length > 0) {
+      const seen = await this.reviewedSnapshot(ctx);
+      if (seen) {
+        const sinceReview = diffSnapshots(seen, after);
+        const unseen = new Set([
+          ...sinceReview.changed,
+          ...sinceReview.added,
+          ...sinceReview.removed,
+        ]);
+        const kept = editedFiles.filter((f) => unseen.has(f));
+        if (kept.length === 0) bump(state, 'review.skipped_seen');
+        editedFiles = kept;
+      }
+    }
     this.persist();
 
-    if (newNotices > 0) await this.writeFlags(ctx);
+    if (newNotices > 0 || marksChanged) await this.writeFlags(ctx);
     if (routed.steer) this.pi.sendUserMessage(routed.steer.text, { deliverAs: 'followUp' });
 
-    const edited = (modelDiff?.hunks.length ?? 0) + (modelDiff?.removed.length ?? 0) > 0;
+    const edited = editedFiles.length > 0;
     if ((edited || specChanged) && state.lastReviewTurn !== state.turn) {
-      this.startReview(ctx, config, 'edit');
+      const what = [...editedFiles, ...(specChanged ? [config.files.spec] : [])];
+      const shown = what.length > 3 ? [...what.slice(0, 3), `+${what.length - 3} more`] : what;
+      this.startReview(ctx, config, 'edit', undefined, `edit: ${shown.join(', ')}`);
     }
   }
 
   /** Whether the spec changed since it was last read. The first sighting is not a change. */
-  private async specChanged(ctx: ExtensionContext, config: LedgerConfig): Promise<boolean> {
-    const spec = await readTextOrNull(this.file(ctx, config.files.spec));
+  private specChanged(spec: string | null): boolean {
     const hash = spec === null ? null : hashText(spec);
     const known = this.s.specHash;
     this.s.specHash = hash;
     return known !== undefined && known !== hash;
+  }
+
+  /** The model files as the last review saw them; null before the first review. */
+  private async reviewedSnapshot(ctx: ExtensionContext): Promise<Snapshot | null> {
+    const text = await readTextOrNull(this.file(ctx, REVIEW_SNAPSHOT_FILE));
+    try {
+      return text ? (JSON.parse(text) as Snapshot) : null;
+    } catch {
+      return null;
+    }
   }
 
   // ---------- reviewer ----------
@@ -317,10 +362,12 @@ export class LedgerRuntime {
     ctx: ExtensionContext,
     config: LedgerConfig,
     reason: ReviewReason,
-    note?: string
+    note?: string,
+    /** Shown in the notice in place of the reason, e.g. "edit: R/fit.R". */
+    label?: string
   ): boolean {
     if (this.pending) return false;
-    this.pending = this.review(ctx, config, reason, note)
+    this.pending = this.review(ctx, config, reason, note, label)
       .catch((err) => ctx.ui.notify(`Ledger: review failed (${String(err)})`, 'warning'))
       .finally(() => {
         this.pending = null;
@@ -332,23 +379,18 @@ export class LedgerRuntime {
     ctx: ExtensionContext,
     config: LedgerConfig,
     reason: ReviewReason,
-    note?: string
+    note?: string,
+    label?: string
   ): Promise<void> {
     const state = this.s;
-    const [ledger, spec, snapshot, previous] = await Promise.all([
+    const [ledger, spec, snapshot, before] = await Promise.all([
       readTextOrNull(this.file(ctx, config.files.ledger)),
       readTextOrNull(this.file(ctx, config.files.spec)),
       this.snapshot(ctx, config),
-      readTextOrNull(this.file(ctx, REVIEW_SNAPSHOT_FILE)),
+      this.reviewedSnapshot(ctx),
     ]);
-    let before: Snapshot | null = null;
-    try {
-      before = previous ? (JSON.parse(previous) as Snapshot) : null;
-    } catch {
-      before = null;
-    }
 
-    ctx.ui.notify(`Ledger: reviewing the model (${reason})…`, 'info');
+    ctx.ui.notify(`Ledger: reviewing the model (${label ?? reason})…`, 'info');
     bump(state, `review.${reason}`);
     const result = await this.callModel(ctx, {
       model: config.reviewer.model,
@@ -376,7 +418,13 @@ export class LedgerRuntime {
       return;
     }
 
-    const verified = verifyReview(output, this.verifyContext(config, snapshot, ledger, spec));
+    const v = this.verifyContext(config, snapshot, ledger, spec);
+    const verified = verifyReview(output, v);
+    recheckEvidence(state.flags, (side) => sideStillThere(side, v));
+    for (const a of verified.answered) {
+      const flag = findFlag(state.flags, a.id);
+      if (flag?.status === 'open') flag.answeredBy = { loc: a.loc, quote: a.quote };
+    }
     const created: Flag[] = [];
     const repeatOf: string[] = [];
     for (const f of verified.flags) {
@@ -397,7 +445,13 @@ export class LedgerRuntime {
     await this.writeFile(ctx, REVIEW_SNAPSHOT_FILE, JSON.stringify(snapshot));
     await this.writeFlags(ctx);
     ctx.ui.notify(
-      reviewNotice(created, repeatOf, verified.droppedFlags),
+      reviewNotice(
+        created,
+        repeatOf,
+        verified.droppedFlags,
+        3,
+        staleFlags(state.flags).map(staleLine)
+      ),
       created.length ? 'warning' : 'info'
     );
   }

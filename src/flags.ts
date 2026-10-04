@@ -29,6 +29,14 @@ export interface Flag {
   /** A model's one-sentence reading of a terse reason; never the human's words. */
   interpretation?: string;
   turn: number;
+  /**
+   * Locations whose quote no longer verifies anywhere in the named file,
+   * ledger or spec (checked after every run and review). A mark only: the
+   * flag stays open until the human closes it.
+   */
+  evidenceGone?: string[];
+  /** A ledger entry the reviewer says answers this flag (quote verified). A mark only. */
+  answeredBy?: Side;
   /** Times a later review raised the same issue again (merged into this flag). */
   repeats?: number;
   lastRaisedTurn?: number;
@@ -214,6 +222,40 @@ export function closeFlag(store: FlagStore, f: Flag, reason?: string): void {
   if (!store.suppressed.includes(key)) store.suppressed.push(key);
 }
 
+/**
+ * Re-check the quotes of open flags. `stillThere` says whether a side's quote
+ * is still in its file, ledger or spec (anywhere, since lines move). Sets or
+ * clears `evidenceGone`; never changes a status. Returns whether a mark changed.
+ */
+export function recheckEvidence(store: FlagStore, stillThere: (s: Side) => boolean): boolean {
+  let changed = false;
+  for (const f of store.flags) {
+    if (f.status !== 'open') continue;
+    const gone = sidesOf(f)
+      .filter((s) => !stillThere(s))
+      .map((s) => s.loc);
+    const before = (f.evidenceGone ?? []).join('\n');
+    if (gone.length) f.evidenceGone = gone;
+    else delete f.evidenceGone;
+    if (gone.join('\n') !== before) changed = true;
+  }
+  return changed;
+}
+
+/** Open flags marked as possibly stale: evidence gone, or answered by a ledger entry. */
+export function staleFlags(store: FlagStore): Flag[] {
+  return store.flags.filter((f) => f.status === 'open' && (f.evidenceGone || f.answeredBy));
+}
+
+/** One line per possibly stale flag, for the post-review digest. */
+export function staleLine(f: Flag): string {
+  const why = [
+    ...(f.evidenceGone ? ['evidence gone'] : []),
+    ...(f.answeredBy ? [`possibly answered by ${f.answeredBy.loc}`] : []),
+  ];
+  return `${f.id} · ${why.join(', ')}`;
+}
+
 /** Steer text for /flag <id> send. Templated; the model never writes steers. */
 export function steerTextFor(flag: Flag): string {
   const where = flag.b ? `${flag.a.loc} and ${flag.b.loc}` : flag.a.loc;
@@ -229,6 +271,7 @@ export function flagsForPrompt(store: FlagStore): string {
     question: f.question,
     ...(f.reason ? { reason: f.reason } : {}),
     ...(f.interpretation ? { interpretation_by_model: f.interpretation } : {}),
+    ...(f.status !== 'closed' && f.evidenceGone ? { evidence_gone: f.evidenceGone } : {}),
   });
   return [
     '[Flags]',
@@ -242,13 +285,24 @@ export function flagsForPrompt(store: FlagStore): string {
 
 export function renderFlag(f: Flag): string[] {
   const again = f.repeats ? ` · raised again ${f.repeats}× (last turn ${f.lastRaisedTurn})` : '';
+  const gone = f.status === 'open' && f.evidenceGone ? ' · evidence gone' : '';
   const lines = [
-    `### ${f.id} · ${f.concept} · type ${f.type} · ${f.status} (turn ${f.turn})${again}`,
+    `### ${f.id} · ${f.concept} · type ${f.type} · ${f.status}${gone} (turn ${f.turn})${again}`,
   ];
   lines.push(`- A \`${f.a.loc}\`: ${oneLine(f.a.quote)}`);
   if (f.b) lines.push(`- B \`${f.b.loc}\`: ${oneLine(f.b.quote)}`);
   if (f.argument) lines.push(`- Why it may not be deliberate: ${oneLine(f.argument)}`);
   lines.push(`- **${oneLine(f.question)}**`);
+  if (f.status === 'open') {
+    for (const loc of f.evidenceGone ?? [])
+      lines.push(
+        `- Evidence gone: \`${loc}\` no longer contains the quote. If the question no longer applies, close it with your reason.`
+      );
+    if (f.answeredBy)
+      lines.push(
+        `- Possibly answered by \`${f.answeredBy.loc}\`: ${oneLine(f.answeredBy.quote)} (the reviewer's reading; close it if you agree)`
+      );
+  }
   if (f.reason) lines.push(`- Your note: ${oneLine(f.reason)}`);
   if (f.interpretation) lines.push(`  (interpretation: ${oneLine(f.interpretation)})`);
   return lines;
@@ -267,7 +321,8 @@ export function renderFlagsFile(
     '',
   ];
   const open = store.flags.filter((f) => f.status === 'open');
-  lines.push(`## Open questions (${open.length})`, '');
+  const stale = staleFlags(store).length;
+  lines.push(`## Open questions (${open.length}${stale ? `, ${stale} possibly stale` : ''})`, '');
   if (open.length === 0) lines.push('None.', '');
   for (const f of open) lines.push(...renderFlag(f), '');
 

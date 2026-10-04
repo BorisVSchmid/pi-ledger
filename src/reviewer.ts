@@ -109,9 +109,17 @@ export interface ReviewerFlag {
   same_as?: string;
 }
 
+/** An open flag that a later ledger entry answers, in the reviewer's reading. */
+export interface ReviewerAnswer {
+  id: string;
+  loc: string;
+  quote: string;
+}
+
 export interface ReviewerOutput {
   flags: ReviewerFlag[];
   restatement: string | null;
+  answered: ReviewerAnswer[];
 }
 
 const isStr = (v: unknown): v is string => typeof v === 'string' && v.trim().length > 0;
@@ -135,7 +143,10 @@ export function coerceReviewerOutput(raw: unknown): ReviewerOutput | undefined {
     f.type = Number.isFinite(Number(f.type)) ? Number(f.type) : 0;
     if (!isStr(f.same_as)) delete f.same_as;
   }
-  return { flags, restatement: isStr(r.restatement) ? r.restatement : null };
+  const answered = (Array.isArray(r.answered) ? r.answered : []).filter(
+    (a): a is ReviewerAnswer => isSide(a) && isStr((a as ReviewerAnswer).id)
+  );
+  return { flags, restatement: isStr(r.restatement) ? r.restatement : null, answered };
 }
 
 // ---------- verification ----------
@@ -184,10 +195,17 @@ export function verifySide(side: Side, v: VerifyContext): boolean {
   return quoteNearLine(text, from, to, side.quote, window);
 }
 
+/** Whether a side's quote is still anywhere in its file, ledger or spec (lines may have moved). */
+export function sideStillThere(side: Side, v: VerifyContext): boolean {
+  return verifySide({ loc: side.loc.trim().replace(/:\d+(?:-\d+)?$/, ''), quote: side.quote }, v);
+}
+
 export interface VerifiedReview {
   flags: FlagInput[];
   restatement: string | null;
   droppedFlags: number;
+  /** Answers whose ledger quote verified; the flag ids are checked by the caller. */
+  answered: ReviewerAnswer[];
 }
 
 export function verifyReview(out: ReviewerOutput, v: VerifyContext): VerifiedReview {
@@ -206,7 +224,13 @@ export function verifyReview(out: ReviewerOutput, v: VerifyContext): VerifiedRev
       });
     } else droppedFlags++;
   }
-  return { flags, restatement: out.restatement, droppedFlags };
+  const ledgerBase = v.ledgerName.split('/').pop()!.toLowerCase();
+  const answered = out.answered.filter(
+    (a) =>
+      a.loc.trim().toLowerCase().startsWith(`${ledgerBase}#`) &&
+      verifySide({ loc: a.loc, quote: a.quote }, v)
+  );
+  return { flags, restatement: out.restatement, droppedFlags, answered };
 }
 
 // ---------- triggers ----------
@@ -232,7 +256,9 @@ export function reviewNotice(
   created: Array<{ id: string; concept: string; question: string }>,
   repeatOf: string[],
   dropped: number,
-  maxListed = 3
+  maxListed = 3,
+  /** Open flags marked possibly stale, as `staleLine` renders them. */
+  stale: string[] = []
 ): string {
   const head =
     `Ledger review: ${created.length} new question(s)` +
@@ -245,6 +271,11 @@ export function reviewNotice(
   const again = [...new Set(repeatOf)];
   if (again.length) lines.push(`  raised again: ${again.join(', ')}`);
   if (created.length || again.length) lines.push('  See /flag.');
+  if (stale.length) {
+    lines.push(`Possibly stale (${stale.length}; close with /flag <id> close <why> if so):`);
+    for (const l of stale.slice(0, 2 * maxListed)) lines.push(`  ${l}`);
+    if (stale.length > 2 * maxListed) lines.push(`  …and ${stale.length - 2 * maxListed} more`);
+  }
   return lines.join('\n');
 }
 
@@ -373,6 +404,11 @@ Conceptual (each part fine alone; together they encode two models):
 - Name each finding's concept by its current heading in [Model Spec]
   ("P1 transmission"), even if older flags use another name; use a short
   plain name only for a concept the spec does not list.
+- An open flag may have been answered since it was raised, by a later ledger
+  entry (a Decision, an Assumption status, a Crossed-out line). If so, list
+  it under "answered" with that entry's location and a verbatim quote. This
+  only marks the flag for the human; it does not close it. Do not list a
+  flag whose evidence is merely gone ("evidence_gone"); that is already marked.
 - Finish with a restatement: in at most ten plain lines, the model as you
   understand it from the artefacts (states, flows, what drives transmission,
   what enters from outside, time and space scales, observation model). The
@@ -389,6 +425,7 @@ Conceptual (each part fine alone; together they encode two models):
      "question": "one sentence ending with ?",
      "same_as": "F3 (only when repeating an open flag; otherwise omit)"}
   ],
+  "answered": [{"id": "F3", "loc": "LEDGER.md#D4", "quote": "verbatim"}],
   "restatement": "at most ten lines"
 }`;
 
