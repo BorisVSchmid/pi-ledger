@@ -24,6 +24,7 @@ import {
 import {
   addFlag,
   closeFlag,
+  closeReason,
   emptyFlags,
   findFlag,
   migrateRegister,
@@ -458,9 +459,9 @@ export class LedgerRuntime {
 
   // ---------- /flag ----------
 
-  /** /flag · /flag <id> · /flag <id> close [reason] · /flag <id> send. Returns the text to show. */
+  /** /flag · /flag <id> · /flag <id> close <reason> · /flag <id> send. Returns the text to show. */
   async flagCommand(args: string, ctx: ExtensionContext): Promise<string> {
-    const usage = 'Usage: /flag (list) · /flag <id> · /flag <id> close [reason] · /flag <id> send';
+    const usage = 'Usage: /flag (list) · /flag <id> · /flag <id> close <reason> · /flag <id> send';
     const store = this.s.flags;
     const [id, action, ...rest] = args.trim().split(/\s+/).filter(Boolean);
     if (!id || id === 'list') {
@@ -472,12 +473,14 @@ export class LedgerRuntime {
     const flag = findFlag(store, id);
     if (!flag) return `No flag ${id}. ${usage}`;
     if (!action) return renderFlag(flag).join('\n');
-    // "intended" and "dismiss" are the pi-supervisor names for close.
-    const verb = action === 'intended' || action === 'dismiss' ? 'close' : action;
+    const verb = action.toLowerCase();
     if (verb !== 'close' && verb !== 'send') return usage;
 
-    if (verb === 'close') closeFlag(store, flag, rest.join(' ') || undefined);
-    else flag.status = 'sent';
+    if (verb === 'close') {
+      const r = closeReason(store, flag, rest);
+      if ('error' in r) return r.error;
+      closeFlag(store, flag, r.reason);
+    } else flag.status = 'sent';
     bump(this.s, `flag.${verb}`);
     this.persist();
     await this.writeFlags(ctx);
@@ -485,7 +488,7 @@ export class LedgerRuntime {
       this.pi.sendUserMessage(steerTextFor(flag), { deliverAs: 'followUp' });
       return `${flag.id} sent to the agent.`;
     }
-    return `${flag.id} closed; the same evidence will not be raised again.`;
+    return `${flag.id} closed (${flag.reason}); the same evidence will not be raised again.`;
   }
 
   metricsText(): string {

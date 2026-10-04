@@ -66,7 +66,7 @@ pi-ledger is untested.
 | `/ledger metrics`             | counters                                                                |
 | `/review [note]`              | review the model now                                                    |
 | `/flag`                       | list open questions                                                     |
-| `/flag <id> close [reason]`   | answered (deliberate, fixed, or not an issue); never raised again       |
+| `/flag <id> close <reason>`   | answered (deliberate, fixed, or not an issue); never raised again       |
 | `/flag <id> send`             | send a templated question to the agent (the only way a flag reaches it) |
 
 ## What it checks

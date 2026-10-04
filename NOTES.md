@@ -34,8 +34,17 @@ commands). Defaults taken without asking:
   changed a model file or `MODEL_SPEC.md` changed after its first sighting. Breakpoint and
   backstop triggers, cooldowns and the `triggers` config block are gone. A review cannot
   trigger another one because a turn without edits never reviews.
-- **`/flag <id> close [reason]`** replaces `intended` and `dismiss`, which were the same action.
-  Both old words still work as aliases. Statuses are `open`, `sent`, `closed`.
+- **`/flag <id> close <reason>`** replaces `intended` and `dismiss`, which were the same action.
+  The old words are gone as verbs. Statuses are `open`, `sent`, `closed`.
+- **A close reason is required** (Boris, 2026-10-04). `/flag F3 close` alone is refused with a
+  one-line hint. Presets keep it to one word: `intended`, `not-an-issue`, `fixed`, `dup F<n>`
+  (must name another flag), each optionally followed by more words; anything else is free text.
+  Closed flags go to the reviewer as the human's answer, so the reason is what stops the same
+  doubt coming back in other words. **No model-suggested reason**, on purpose: the reviewer
+  reads closed reasons as the human's verdict, and a model-written one would put the model's
+  judgement in the human's voice and could be accepted with a keypress without being read. The
+  cost is a few keystrokes per close. Flags closed earlier without a reason (and register
+  flags that were `intended`/`dismissed`) still load; they simply show no note.
 - **Compaction note reworded**: it lists summary statements that _differ_ from the ledger and
   says to check which is current, since the ledger can be behind. The prompt's key is
   `differs`; replies under the old `stale` key are still accepted.
