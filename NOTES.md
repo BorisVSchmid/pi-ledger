@@ -213,3 +213,18 @@ existing summary for acceptance as described above.
 - `ledger-mode-brief/` is excluded from prettier so the brief stays verbatim and CI's
   `format:check` passes.
 - Tests: `tests/ledger-monitor.test.ts` (17). Suite: 16 files, 229 tests pass; `tsc` clean.
+
+## Deliverable 4: register and commands
+
+- `src/ledger/register.ts`: the provided module with two changes. Concept names resolve onto
+  existing keys (same `P<n>` id, or same name ignoring case), so "P1 transmission" from the
+  reviewer and "P1 Transmission" from the spec are one concept. Suppression is keyed on concept
+  plus file and normalised quote on each side, so `intended` survives shifted lines and swapped
+  sides; changed evidence is a new question. `dismiss` still suppresses the same evidence.
+  Added `specStatements` for seeding.
+- Register persisted in ledger state; exported to `files.register` on every change.
+- `/flag`, `/flag <id>`, `/flag <id> intended|dismiss [reason]`, `/flag <id> send` (templated
+  steer via `steerTextFor`, the only way a reviewer flag reaches the agent).
+- `/supervise register` and `/supervise metrics`, intercepted only in ledger mode.
+- Spec seeding on session start from `## P<n>` headings in `MODEL_SPEC.md`.
+- Tests: `tests/ledger-register.test.ts` (6). Suite: 17 files, 235 tests pass.

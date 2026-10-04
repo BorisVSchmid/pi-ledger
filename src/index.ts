@@ -34,6 +34,7 @@ import {
   type LedgerConfig,
 } from './ledger/config.js';
 import { LedgerRuntime } from './ledger/runtime.js';
+import { flagCommand, metricsText, registerText } from './ledger/commands.js';
 import {
   extractMessages,
   buildCompactionSummary,
@@ -154,6 +155,7 @@ export default function (pi: ExtensionAPI) {
     if (isLedgerMode(ledgerConfig)) {
       ledger.load(ctx);
       ctx.ui.notify('Supervisor: ledger mode', 'info');
+      void ledger.seedFromSpec(ctx, ledgerConfig);
     }
     state.loadFromSession(ctx);
 
@@ -366,6 +368,12 @@ export default function (pi: ExtensionAPI) {
         { value: 'model', label: 'model', description: 'Pick the supervisor model' },
         { value: 'stop', label: 'stop', description: 'Stop active supervision' },
         { value: 'widget', label: 'widget', description: 'Toggle the status widget' },
+        ...(isLedgerMode(ledgerConfig)
+          ? [
+              { value: 'register', label: 'register', description: 'Show the model register' },
+              { value: 'metrics', label: 'metrics', description: 'Show ledger-mode metrics' },
+            ]
+          : []),
       ];
       const matches = subcommands.filter((s) => s.value.startsWith(prefix));
       return matches.length > 0 ? matches : null;
@@ -373,6 +381,13 @@ export default function (pi: ExtensionAPI) {
     handler: async (args, ctx) => {
       currentCtx = ctx;
       const trimmed = args?.trim() ?? '';
+
+      // --- ledger-mode subcommands ---
+
+      if (isLedgerMode(ledgerConfig) && (trimmed === 'register' || trimmed === 'metrics')) {
+        ctx.ui.notify(trimmed === 'register' ? registerText(ledger) : metricsText(ledger), 'info');
+        return;
+      }
 
       // --- subcommands ---
 
@@ -534,6 +549,19 @@ export default function (pi: ExtensionAPI) {
       }
 
       ctx.ui.notify(`Supervisor active: "${truncateForNotify(trimmed, 25)}"`, 'info');
+    },
+  });
+
+  // ---- /flag: answer reviewer flags (ledger mode) ----
+
+  pi.registerCommand('flag', {
+    description: 'Ledger mode: list flags, or /flag <id> intended|dismiss|send [reason]',
+    handler: async (args, ctx) => {
+      if (!isLedgerMode(ledgerConfig)) {
+        ctx.ui.notify('/flag is only available in ledger mode.', 'warning');
+        return;
+      }
+      ctx.ui.notify(await flagCommand(args ?? '', ctx, pi, ledger, ledgerConfig), 'info');
     },
   });
 

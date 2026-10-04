@@ -5,6 +5,7 @@
 
 import type { ExtensionAPI, ExtensionContext } from '@earendil-works/pi-coding-agent';
 import type { FindingKind } from './monitor.js';
+import { emptyRegister, type Register } from './register.js';
 
 export const LEDGER_ENTRY_TYPE = 'supervisor-ledger-state';
 
@@ -28,6 +29,8 @@ export interface LedgerState {
   /** Dedup keys for notices, so the same finding is not reported every turn. */
   noticeKeys: string[];
   metrics: Record<string, number>;
+  /** Concept-level model register and reviewer flags. */
+  register: Register;
 }
 
 export function emptyLedgerState(): LedgerState {
@@ -40,6 +43,7 @@ export function emptyLedgerState(): LedgerState {
     notices: [],
     noticeKeys: [],
     metrics: {},
+    register: emptyRegister(),
   };
 }
 

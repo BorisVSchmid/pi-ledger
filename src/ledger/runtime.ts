@@ -20,6 +20,7 @@ import {
 import { evaluateTurn, routeFindings, type FindingKind } from './monitor.js';
 import { addNotice, bump, LedgerStateStore, type LedgerState } from './state.js';
 import { renderFlagsFile } from './flags-file.js';
+import { applyEdits, renderRegister, specStatements } from './register.js';
 
 interface Baseline {
   ledger: string | null;
@@ -185,13 +186,33 @@ export class LedgerRuntime {
     if (routed.steer) this.pi.sendUserMessage(routed.steer.text, { deliverAs: 'followUp' });
   }
 
-  async writeFlags(ctx: ExtensionContext, config: LedgerConfig): Promise<void> {
-    const file = path.resolve(ctx.cwd, config.files.flags);
+  /** Seed stated meanings from MODEL_SPEC.md (session start). Returns the number of concepts seeded. */
+  async seedFromSpec(ctx: ExtensionContext, config: LedgerConfig): Promise<number> {
+    const spec = await readTextOrNull(path.resolve(ctx.cwd, config.files.spec));
+    if (!spec) return 0;
+    const edits = specStatements(spec);
+    if (edits.length === 0) return 0;
+    applyEdits(this.state().register, edits, this.state().turn);
+    this.store.persist();
+    await this.exportRegister(ctx, config);
+    return edits.length;
+  }
+
+  async exportRegister(ctx: ExtensionContext, config: LedgerConfig): Promise<void> {
+    await this.writeFile(ctx, config.files.register, renderRegister(this.state().register));
+  }
+
+  private async writeFile(ctx: ExtensionContext, rel: string, text: string): Promise<void> {
+    const file = path.resolve(ctx.cwd, rel);
     try {
       await fs.mkdir(path.dirname(file), { recursive: true });
-      await fs.writeFile(file, renderFlagsFile(this.state()), 'utf8');
+      await fs.writeFile(file, text, 'utf8');
     } catch {
-      ctx.ui.notify(`Supervisor: could not write ${config.files.flags}`, 'warning');
+      ctx.ui.notify(`Supervisor: could not write ${rel}`, 'warning');
     }
+  }
+
+  async writeFlags(ctx: ExtensionContext, config: LedgerConfig): Promise<void> {
+    await this.writeFile(ctx, config.files.flags, renderFlagsFile(this.state()));
   }
 }
