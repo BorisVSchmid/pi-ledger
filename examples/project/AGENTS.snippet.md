@@ -1,6 +1,6 @@
-## Research ledger (MEMENTO.md) and model spec
+## Research ledger (LEDGER.md) and model spec
 
-- MEMENTO.md is the state of this investigation. Read it at session start and
+- LEDGER.md is the state of this investigation. Read it at session start and
   verify the Next item against the current files before acting.
 - Record in the same turn: assumptions you rely on (Assumptions), choices
   between alternatives (Decisions), and results (Observed, with a run id).
@@ -14,7 +14,7 @@
 - Claims that something fits, works or converges need a run id and, where it
   exists, held-out evidence.
 - When a result refutes a recorded item, move it to Crossed out with the run
-  id and a one-line reason. Keep full text in MEMENTO.archive.md.
+  id and a one-line reason. Keep full text in LEDGER.archive.md.
 - Edit sections in place; never regenerate the whole file. Keep it under
   ~2,000 words.
 - End every turn with exactly one line:
@@ -28,5 +28,5 @@
 - Questions for the human go to the human. A "Ledger check" message is a
   request to record, cite or reconcile; it is not an answer to your question.
 - A "Ledger note on the compaction summary" lists statements in the summary
-  that differ from MEMENTO.md. Check which is current: if the summary is right,
+  that differ from LEDGER.md. Check which is current: if the summary is right,
   update the ledger; if the ledger is right, set the summary statement aside.

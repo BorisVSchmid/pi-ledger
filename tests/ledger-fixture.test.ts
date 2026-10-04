@@ -61,7 +61,7 @@ async function runVariant(variant: string) {
   const dir = join(FIXTURE, 'variants', variant);
   cpSync(dir, h.cwd, { recursive: true, filter: (src) => !src.endsWith('reply.md') });
   const replyFile = join(dir, 'reply.md');
-  const memChanged = existsSync(join(dir, 'MEMENTO.md'));
+  const memChanged = existsSync(join(dir, 'LEDGER.md'));
   h.reply(
     existsSync(replyFile)
       ? readFileSync(replyFile, 'utf8')
@@ -204,13 +204,13 @@ describe('compaction note', () => {
         differs: [
           {
             summary_quote: 'transmission is density-dependent across herds',
-            ref: 'MEMENTO.md#X1',
+            ref: 'LEDGER.md#X1',
             ledger_quote: 'X1: transmission is density-dependent',
             note: 'crossed out: refuted by R2',
           },
           {
             summary_quote: 'the model uses weekly steps',
-            ref: 'MEMENTO.md#A1',
+            ref: 'LEDGER.md#A1',
             ledger_quote: 'closed population',
             note: 'invented',
           },

@@ -16,7 +16,7 @@ whose closing chapter, "Cargo Cult Science", states the plugin's job: you must n
 you are the easiest person to fool. A research agent's account of its own work is a close second.
 
 pi-ledger has one job: integrity. In a long exploratory research session it checks that the research
-ledger (`MEMENTO.md`) keeps up with the work and that the model stays coherent, and puts what it finds
+ledger (`LEDGER.md`) keeps up with the work and that the model stays coherent, and puts what it finds
 to you as questions. It never pushes the agent to finish, narrow or change course, never judges
 whether the work is done, never runs anything, and never reads reasoning or tool output.
 
@@ -32,9 +32,11 @@ pi install https://github.com/BorisVSchmid/pi-supervisor@master
 pi -e /path/to/this/repo/src/index.ts
 ```
 
-Copy [`examples/project/`](examples/project/) into a research project: `MEMENTO.md` and
+Copy [`examples/project/`](examples/project/) into a research project: `LEDGER.md` and
 `MODEL_SPEC.md` templates, an `AGENTS.md` snippet that tells the agent how to keep the ledger, and
-`.pi/ledger-config.json`. With `MEMENTO.md` present the ledger switches on at session start.
+`.pi/ledger-config.json`. With `LEDGER.md` present the ledger switches on at session start.
+Projects started with an earlier version keep their ledger in `MEMENTO.md`: rename it (and
+`MEMENTO.archive.md`) to `LEDGER.md`. The old name is not read, and a notice says so.
 
 ## Status line
 
@@ -49,12 +51,12 @@ Acceptance 1/3 passed · 2 open flags · ledger current
   id stays open.
 - **Flags**: reviewer questions you have not answered.
 - **Ledger**: `ledger current`, `ledger behind` (the last turn's `Ledger:` line was missing or did
-  not match the file), `locked section edited`, or `no MEMENTO.md`.
+  not match the file), `locked section edited`, or `no LEDGER.md`.
 
 Write the Aim and the Acceptance lines (what "good" means, against which data) before the agent
 starts; they are append-only after that. If you want the work pursued unattended until Acceptance
 passes, that is a loop driver's job (pi-autoresearch, pi-multiloop's research mode, or upstream
-pi-supervisor pointed at "every Acceptance line in MEMENTO.md is passed"). Running one next to
+pi-supervisor pointed at "every Acceptance line in LEDGER.md is passed"). Running one next to
 pi-ledger is untested.
 
 ## Commands
@@ -73,18 +75,18 @@ pi-ledger is untested.
 
 **Every turn (code only, no model call).** After the agent settles, the monitor checks:
 
-| Check                                            | Finding                                                | Action                          |
-| ------------------------------------------------ | ------------------------------------------------------ | ------------------------------- |
-| D1 reply ends with a `Ledger:` line              | `LEDGER_LINE_MISSING`                                  | templated steer, never repeated |
-| D2 the line matches whether `MEMENTO.md` changed | `LEDGER_CLAIMED_NO_CHANGE`, `LEDGER_CHANGED_UNCLAIMED` | templated steer, never repeated |
-| D3 `Acceptance` and `Checks` are append-only     | `LOCKED_SECTION_EDITED`                                | notice                          |
-| D4 model files changed                           | snapshot diff with line ranges                         | starts a review                 |
-| D5 language drift                                | `LANGUAGE_DRIFT`                                       | notice                          |
+| Check                                           | Finding                                                | Action                          |
+| ----------------------------------------------- | ------------------------------------------------------ | ------------------------------- |
+| D1 reply ends with a `Ledger:` line             | `LEDGER_LINE_MISSING`                                  | templated steer, never repeated |
+| D2 the line matches whether `LEDGER.md` changed | `LEDGER_CLAIMED_NO_CHANGE`, `LEDGER_CHANGED_UNCLAIMED` | templated steer, never repeated |
+| D3 `Acceptance` and `Checks` are append-only    | `LOCKED_SECTION_EDITED`                                | notice                          |
+| D4 model files changed                          | snapshot diff with line ranges                         | starts a review                 |
+| D5 language drift                               | `LANGUAGE_DRIFT`                                       | notice                          |
 
 **Review (a capable model, fresh context each time).** Runs after a turn that changed a model file or
 `MODEL_SPEC.md`, before compaction, and on `/review [note]`, one at a time. The reviewer sees only
 artefacts: `MODEL_SPEC.md` (read fresh, so renamed headings are picked up), the flags already
-raised, `MEMENTO.md`, the model files with line numbers, the edits since the last review, and the
+raised, `LEDGER.md`, the model files with line numbers, the edits since the last review, and the
 agent's latest description of the model labelled as a claim. It looks for two places encoding two
 ideas of the same thing (density- vs frequency-dependent transmission, an external hazard plus an
 external compartment, per-week rates in a per-day model, seasonality in two layers, and so on).
@@ -92,7 +94,7 @@ Every quote and location is checked in code; findings that do not verify are dro
 question already open is merged into its flag rather than raised again. Prefer a reviewer from a
 different model family than the working agent.
 
-**After compaction.** The reviewer model reads the new summary with `MEMENTO.md` and `MODEL_SPEC.md`
+**After compaction.** The reviewer model reads the new summary with `LEDGER.md` and `MODEL_SPEC.md`
 only, and adds a separate note listing statements in the summary that differ from the ledger. The
 note does not assume the ledger is right (it can be behind); it asks the agent to check which is
 current. The summary itself is not changed.

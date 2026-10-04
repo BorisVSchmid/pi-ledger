@@ -27,7 +27,7 @@ Aim (human-owned; propose changes, do not edit):
 
 ## Crossed out
 
-- ~~X1: <claim>~~ — refuted by R9 — do not retry because: <…> (full text: MEMENTO.archive.md)
+- ~~X1: <claim>~~ — refuted by R9 — do not retry because: <…> (full text: LEDGER.archive.md)
 
 ## Next
 

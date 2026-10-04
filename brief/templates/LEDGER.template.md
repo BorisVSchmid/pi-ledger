@@ -19,7 +19,7 @@ Aim (human-owned; propose changes, do not edit):
 - O1: <result>  — R4  — checked: <date or commit>
 
 ## Crossed out
-- ~~X1: <claim>~~  — refuted by R9  — do not retry because: <…>  (full text: MEMENTO.archive.md)
+- ~~X1: <claim>~~  — refuted by R9  — do not retry because: <…>  (full text: LEDGER.archive.md)
 
 ## Next
 - <one concrete, verifiable action>  — done when: <observable check>

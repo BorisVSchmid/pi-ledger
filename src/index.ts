@@ -20,7 +20,12 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import type { ExtensionAPI, ExtensionContext } from '@earendil-works/pi-coding-agent';
-import { defaultConfig, loadLedgerConfig, type LedgerConfig } from './config.js';
+import {
+  defaultConfig,
+  legacyLedgerNotice,
+  loadLedgerConfig,
+  type LedgerConfig,
+} from './config.js';
 import { LedgerRuntime, readTextOrNull } from './runtime.js';
 import { statusDetail, statusLine } from './monitor.js';
 
@@ -73,6 +78,8 @@ export default function (pi: ExtensionAPI) {
     config = loadLedgerConfig(ctx.cwd);
     ledger.load(ctx);
     enabled = ledger.state().enabled ?? (config.autoEnable && existsSync(ledgerPath(ctx)));
+    const legacy = legacyLedgerNotice(ctx.cwd, config.files.ledger);
+    if (legacy) ctx.ui.notify(legacy, 'info');
     await refreshStatus(ctx);
   };
 
