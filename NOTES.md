@@ -272,3 +272,21 @@ section 8 have not been measured. Manual procedure, per model and per variant 1â
    flagged (and with which type), other flags (false flags), `review.flags_dropped_unverified`,
    and whether the restatement in FLAGS.md matches the fixture's intended model.
 4. Run `base` the same way: every flag there is a false flag.
+
+## Deliverable 6: upstream switches
+
+In ledger mode the goal-mode model analysis does not run at all, which covers every item in
+brief 5.6 at once:
+
+- `agent_settled`: the ledger monitor runs, then the handler returns. No `analyze()` call, so
+  no `done`, no steer at idle (including the "Please continue" fallback on analysis errors), and
+  `escalateReframeTier` is never reached.
+- `turn_end`: returns immediately (mid-run analysis off).
+- `/supervise <goal>`, `/supervise` (inferred goal) and the `start_supervision` tool refuse with
+  a short explanation. `/supervise stop|widget|model|register|metrics` still work.
+- `[Session Goal]`, `[Current Status]`, `[Earlier Turns]` are never built, because the goal
+  prompt is never built.
+- The `upstream.*` config keys are kept for compatibility with the example config; with the
+  analysis path off they have nothing to switch.
+- Goal mode is unchanged (covered by a test that runs the same events in goal mode).
+- Tests: `tests/ledger-mode-switches.test.ts` (3), loading the full extension. Suite: 261 pass.

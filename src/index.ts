@@ -83,6 +83,10 @@ function hasUserMessages(ctx: ExtensionContext): boolean {
   return false;
 }
 
+const LEDGER_NO_GOAL =
+  'Ledger mode: the supervisor flags ledger drift and model inconsistencies; it does not supervise toward a goal. ' +
+  'Use /review, /flag, /supervise register or /supervise metrics.';
+
 export default function (pi: ExtensionAPI) {
   const state = new SupervisorStateManager(pi);
   const widgetState = createInitialState();
@@ -114,6 +118,7 @@ export default function (pi: ExtensionAPI) {
     outcome: string,
     ctx: ExtensionContext
   ): Promise<string> => {
+    if (isLedgerMode(ledgerConfig)) return LEDGER_NO_GOAL;
     if (state.isActive()) {
       const activeState = state.getState()!;
       return (
@@ -236,6 +241,8 @@ export default function (pi: ExtensionAPI) {
 
   pi.on('turn_end', async (_event, ctx) => {
     currentCtx = ctx;
+    // Ledger mode: no mid-run model analysis.
+    if (isLedgerMode(ledgerConfig)) return;
     if (!state.isActive()) return;
 
     const messages = extractMessages(ctx);
@@ -273,6 +280,9 @@ export default function (pi: ExtensionAPI) {
       } catch (err) {
         ctx.ui.notify(`Supervisor: ledger monitor failed (${String(err)})`, 'warning');
       }
+      // Ledger mode never runs the goal analysis: no done, no reframe escalation,
+      // and nothing happens at idle beyond the monitor.
+      return;
     }
     if (!state.isActive()) return;
     const inputEpochAtStart = userInputEpoch;
@@ -455,6 +465,11 @@ export default function (pi: ExtensionAPI) {
           `Supervisor model set to ${picked.provider}/${picked.id} (saved to ${configPath}).`,
           'info'
         );
+        return;
+      }
+
+      if (isLedgerMode(ledgerConfig)) {
+        ctx.ui.notify(LEDGER_NO_GOAL, 'info');
         return;
       }
 
