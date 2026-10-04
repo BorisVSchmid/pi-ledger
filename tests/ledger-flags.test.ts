@@ -9,10 +9,12 @@ import { join } from 'node:path';
 import {
   addFlag,
   closeFlag,
+  closeReason,
   emptyFlags,
   findFlag,
   flagsForPrompt,
   migrateRegister,
+  renderFlag,
   sameLocation,
   type FlagInput,
 } from '../src/flags.js';
@@ -88,6 +90,23 @@ describe('flag dedup', () => {
     closeFlag(store, store.flags[0], 'deliberate');
     expect(addFlag(store, c1Flag('a', 'q2'), 2)).toEqual({ flag: null, suppressed: true });
     expect(addFlag(store, c1Flag('changed evidence', 'q'), 2).flag?.id).toBe('F2');
+  });
+});
+
+describe('close reasons', () => {
+  const reason = (words: string) => closeReason(words.split(' ').filter(Boolean));
+
+  it('requires a few words of why; bare verdicts and shorthands are refused', () => {
+    expect(reason('')).toEqual({ error: expect.stringMatching(/^Say why/) });
+    expect(reason('intended')).toHaveProperty('error');
+    expect(reason('dup F1')).toHaveProperty('error');
+    expect(reason('fixed in fit.R:40')).toEqual({ reason: 'fixed in fit.R:40' });
+  });
+
+  it('keeps free text as typed', () => {
+    expect(reason('Range is the prior, not data')).toEqual({
+      reason: 'Range is the prior, not data',
+    });
   });
 });
 
@@ -252,7 +271,13 @@ describe('runtime', () => {
     h.replies.push(reply([fixtureFlag('First?'), second]));
     await h.rt.review(h.ctx, h.config, 'command');
     expect(await h.rt.flagCommand('', h.ctx)).toMatch(/F1[\s\S]*F2/);
-    expect(await h.rt.flagCommand('F2 dismiss', h.ctx)).toMatch(/closed/);
+    expect(await h.rt.flagCommand('F2 dismiss', h.ctx)).toMatch(/^Usage/);
+    expect(await h.rt.flagCommand('F2 close', h.ctx)).toMatch(/F2 not closed. Say why/);
+    expect(await h.rt.flagCommand('F2 close intended', h.ctx)).toMatch(/not closed/);
+    expect(h.rt.state().flags.flags[1].status).toBe('open');
+    expect(await h.rt.flagCommand('F2 close external forcing is deliberate', h.ctx)).toMatch(
+      /F2 closed \(external forcing/
+    );
     expect(h.pi.sendUserMessage).not.toHaveBeenCalled();
     expect(await h.rt.flagCommand('F1 send', h.ctx)).toMatch(/sent/);
     expect(h.pi.sendUserMessage.mock.calls[0][0]).toMatch(/^Ledger check: possible inconsistency/);
@@ -260,11 +285,15 @@ describe('runtime', () => {
     expect(await h.rt.flagCommand('F1 bogus', h.ctx)).toMatch(/^Usage/);
     expect(readFileSync(join(h.cwd, '.pi', 'FLAGS.md'), 'utf8')).toMatch(/Open questions \(0\)/);
     expect(h.rt.metricsText()).toMatch(/sent 1, closed 1/);
-    expect(await h.rt.flagCommand('F1 close fixed', h.ctx)).toMatch(/closed/);
+    expect(await h.rt.flagCommand('F1 close fixed in fit.R', h.ctx)).toMatch(/closed/);
 
     const rt2 = new LedgerRuntime(h.pi);
     rt2.load(h.ctx);
     expect(rt2.state().flags.flags.map((f) => f.status)).toEqual(['closed', 'closed']);
+    expect(rt2.state().flags.flags.map((f) => f.reason)).toEqual([
+      'fixed in fit.R',
+      'external forcing is deliberate',
+    ]);
   });
 
   it('loads a pi-supervisor-era state with a register', () => {
@@ -289,5 +318,71 @@ describe('runtime', () => {
     expect(rt.state()).toMatchObject({ version: 2, turn: 7, lastTurnFindings: [] });
     expect(rt.state().flags.flags[0].status).toBe('closed');
     expect('register' in rt.state()).toBe(false);
+  });
+
+  it('asks for a reason when none is given, and a cancel closes nothing', async () => {
+    h = harness();
+    h.replies.push(reply([fixtureFlag('First?')]));
+    await h.rt.review(h.ctx, h.config, 'command');
+    h.ctx.hasUI = true;
+    h.ctx.ui.input = vi.fn(async () => undefined);
+    expect(await h.rt.flagCommand('F1 close', h.ctx)).toMatch(/not closed/);
+    expect(h.rt.state().flags.flags[0].status).toBe('open');
+    h.ctx.ui.input = vi.fn(async () => ' fixed  in fit.R ');
+    expect(await h.rt.flagCommand('F1 close', h.ctx)).toMatch(/closed \(fixed in fit\.R\)/);
+    expect(h.ctx.ui.input.mock.calls[0][0]).toMatch(/^Why close F1\? \(First\?\)/);
+  });
+
+  it('adds a labelled model interpretation to a terse reason, kept apart from it', async () => {
+    h = harness();
+    h.replies.push(reply([fixtureFlag('First?'), { ...fixtureFlag('Second?'), concept: 'P2 X' }]));
+    await h.rt.review(h.ctx, h.config, 'command');
+    const said = 'Frequency dependence is the deliberate choice for this host.';
+    h.replies.push({ ok: true, json: { interpretation: said }, model: null } as never);
+    await h.rt.flagCommand('F1 close chosen on purpose', h.ctx, h.config);
+    await h.rt.pendingInterpretation;
+    const [f1, f2] = h.rt.state().flags.flags;
+    expect(f1).toMatchObject({ reason: 'chosen on purpose', interpretation: said });
+    const call = (h.rt.callModel as any).mock.calls.at(-1)[1];
+    expect(call.systemPrompt).toMatch(/one sentence/);
+    expect(call.userPrompt).toMatch(/\[Human's reason for closing\]\nchosen on purpose/);
+    expect(renderFlag(f1).join('\n')).toMatch(
+      /Your note: chosen on purpose\n {2}\(interpretation: Freq/
+    );
+    expect(flagsForPrompt(h.rt.state().flags)).toMatch(
+      /"reason": "chosen on purpose",\n {2}"interpretation_by_model": "Freq/
+    );
+    expect(h.ctx.ui.notify.mock.calls.at(-1)[0]).toMatch(/^F1 \(interpretation: Freq/);
+
+    // Re-closing replaces the reason and drops the old interpretation.
+    h.replies.push({ ok: false, error: 'boom', model: null } as never);
+    await h.rt.flagCommand('F1 close not a real difference', h.ctx, h.config);
+    await h.rt.pendingInterpretation;
+    expect(f1.reason).toBe('not a real difference');
+    expect(f1.interpretation).toBeUndefined();
+
+    // A long reason speaks for itself: no model call.
+    const calls = (h.rt.callModel as any).mock.calls.length;
+    const long = 'the range is the prior from the 2019 trapping data and not a fitted value at all';
+    await h.rt.flagCommand(`F2 close ${long}`, h.ctx, h.config);
+    expect(h.rt.pendingInterpretation).toBeNull();
+    expect((h.rt.callModel as any).mock.calls.length).toBe(calls);
+    expect(f2.reason).toBe(long);
+  });
+
+  it('loads flags closed earlier without a reason', () => {
+    h = harness();
+    const old = new LedgerRuntime(h.pi);
+    old.load(h.ctx);
+    addFlag(old.state().flags, fixtureFlag('q'), 1);
+    closeFlag(old.state().flags, old.state().flags.flags[0]);
+    old.persist();
+    const rt = new LedgerRuntime(h.pi);
+    rt.load(h.ctx);
+    const [f] = rt.state().flags.flags;
+    expect(f).toMatchObject({ status: 'closed' });
+    expect(f.reason).toBeUndefined();
+    expect(renderFlag(f).join('\n')).not.toMatch(/Your note/);
+    expect(flagsForPrompt(rt.state().flags)).toMatch(/closed[\s\S]*"id": "F1"/);
   });
 });
