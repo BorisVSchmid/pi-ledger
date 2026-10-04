@@ -186,9 +186,11 @@ a session, and that extension is not ledger mode.
   more reasoning and quote-first prompting help → per-turn monitoring,
   reviewer with extended thinking, quote-first findings.
 - Tang et al., [*How Coding Agents Fail Their Users*](https://arxiv.org/abs/2605.29442)
-  (2026), and [*Agents That Edit Documents*](https://arxiv.org/abs/2609.23953)
+  (2026), and Ren et al., [*Agents That Edit Documents*](https://arxiv.org/abs/2609.23953)
   (2026): inaccurate self-reporting grows as sessions go on; agents misreport
-  their own edits → the Ledger line is a claim verified against the file hash.
+  their own edits (41% of runs that edited the wrong thing filed a receipt
+  claiming an edit the file did not contain) → the Ledger line is a claim
+  verified against the file hash.
 - Zhong et al., [*ImpossibleBench*](https://arxiv.org/abs/2510.20270) (2025)
   and related reward-hacking work: isolating tests removes cheating →
   append-only Acceptance and Checks sections.
