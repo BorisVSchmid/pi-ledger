@@ -10,7 +10,7 @@ copying any text or code from it.
 
 ## Code lineage
 
-- [monotykamary/pi-supervisor](https://github.com/monotykamary/pi-supervisor) (MIT), itself a fork of [tintinweb/pi-supervisor](https://github.com/tintinweb/pi-supervisor).
+- **monotykamary/pi-supervisor** (MIT), itself a fork of **tintinweb/pi-supervisor**.
   pi-ledger is derived from it and keeps its infrastructure: a second model
   in a separate in-memory Pi session that borrows the parent session's
   provider auth; state persisted in the session file; the hook wiring; the
@@ -22,34 +22,34 @@ copying any text or code from it.
 
 ## Designs borrowed from other Pi extensions and skills
 
-- [ruslanlap/memento](https://github.com/ruslanlap/memento) — the ledger's categories and discipline: evidence
+- **ruslanlap/memento** — the ledger's categories and discipline: evidence
   attached to every claim, hypotheses that cannot authorise action, invalidated
   claims kept as "false claims a future agent might repeat", one verifiable
   next action, verify-before-act. The file name `MEMENTO.md` comes from here.
-- [waterdrop26651/pi-memento](https://github.com/waterdrop26651/pi-memento) (Memento-skill) — predictions written before
+- **waterdrop26651/pi-memento** (Memento-skill) — predictions written before
   a run, hypotheses recorded with what evidence would change them, and a cold
   archive recalled only when needed. Our locked `## Checks` section and
   `MEMENTO.archive.md` follow this.
-- [fitchmultz/pi-posthorse](https://github.com/fitchmultz/pi-posthorse) — treating older assistant prose as not being
+- **fitchmultz/pi-posthorse** — treating older assistant prose as not being
   state, editing a current-state note section by section rather than
   rewriting it, and resetting from the note instead of summarising. Our
   "artefacts over narration" rule and reset-from-ledger practice follow this.
-- [davebcn87/pi-autoresearch](https://github.com/davebcn87/pi-autoresearch) — a tool-written, append-only run log that the
+- **davebcn87/pi-autoresearch** — a tool-written, append-only run log that the
   agent cannot edit; re-reading files from disk after compaction. Our
   `runs.jsonl` and run recorder follow this.
-- [OthmanAdi/planning-with-files](https://github.com/OthmanAdi/planning-with-files) — re-injecting the plan each turn and
+- **OthmanAdi/planning-with-files** — re-injecting the plan each turn and
   hashing an approved plan so tampering blocks injection. Our append-only
   locked sections and the optional anchor re-injection follow this.
-- [lhl/pi-multiloop](https://github.com/lhl/pi-multiloop) — compound verifiers, and keeping work counters out of
+- **lhl/pi-multiloop** — compound verifiers, and keeping work counters out of
   the agent's view so they are not read as a context gauge.
-- [thebabush/pi-memento](https://github.com/thebabush/pi-memento), [ttttmr/pi-context](https://github.com/ttttmr/pi-context), pi-rollback —
+- **thebabush/pi-memento**, **ttttmr/pi-context**, **uriafranko/pi-rollback** —
   agent-driven context transactions and branch summaries. Not in the plugin,
   but they shaped the recommendation to run side explorations as `/tree`
   branches.
-- [aerovato/operator-memory](https://github.com/aerovato/operator-memory) — the starting point of the discussion; its
+- **aerovato/operator-memory** — the starting point of the discussion; its
   observation that agents favour the status quo and hesitate to restructure
   documents is one reason the ledger is kept small and append-only.
-- [monotykamary/pi-loop](https://github.com/monotykamary/pi-loop) — the anti-oscillation discussion behind "never
+- **monotykamary/pi-loop** — the anti-oscillation discussion behind "never
   repeat a steer".
 
 ## How pi-ledger differs from the projects it overlaps with
@@ -197,32 +197,43 @@ a session, and that extension is not pi-ledger.
 
 ## Research whose findings shaped the design
 
-- Zhang et al., _Agentic Context Engineering_ (2025): incremental delta
-  updates; monolithic rewrites collapse context → the register and ledger are
-  edited, never regenerated.
-- Laban et al., _LLMs Get Lost in Multi-Turn Conversation_ (2025): early
-  assumptions persist; consolidated restarts recover → reset from the ledger.
-- Martin & Roger, _Classifier Context Rot_ (2026): monitor recall falls with
-  transcript length; incremental checks, more reasoning and quote-first
-  prompting help → per-turn monitoring, reviewer with extended thinking,
-  quote-first findings.
-- _Agents That Edit Documents_ (2026) and Tang et al., _How Coding Agents Fail
-  Their Users_ (2026): agents misreport their own edits → the Ledger line is a
-  claim verified against the file hash.
-- _ImpossibleBench_ (2025) and related reward-hacking work: isolating tests
-  removes cheating → append-only Acceptance and Checks sections.
-- _Self-Correction Blind Spot_ (2026): models catch errors in others' work,
-  not their own → reviewer in a fresh context, artefacts only.
-- Norman, Rivera & Hughes, 21-judge study (2026) and Thakur et al. (2025):
-  judge agreement is weaker than it looks; small judges are worst → code
-  verification of quotes, flags routed to the human, capable reviewer.
-- _When Context Changes_ (2026) and _Unable to Forget_ (2025): stale values
-  win over updates → superseded claims leave the live ledger.
-- Lu et al., _Hidden Pitfalls of AI Scientist Systems_ (2025): post-hoc
-  selection bias → success criteria fixed and locked before fitting.
-- Anthropic, _Harness design for long-running application development_
+- Zhang et al., [_Agentic Context Engineering_](https://arxiv.org/abs/2510.04618)
+  (2025): incremental delta updates; monolithic rewrites collapse context →
+  the register and ledger are edited, never regenerated.
+- Laban et al., [_LLMs Get Lost in Multi-Turn Conversation_](https://arxiv.org/abs/2505.06120)
+  (2025): early assumptions persist; consolidated restarts recover → reset
+  from the ledger.
+- Martin & Roger, [_Classifier Context Rot_](https://arxiv.org/abs/2605.12366)
+  (2026): monitor recall falls with transcript length; incremental checks,
+  more reasoning and quote-first prompting help → per-turn monitoring,
+  reviewer with extended thinking, quote-first findings.
+- Tang et al., [_How Coding Agents Fail Their Users_](https://arxiv.org/abs/2605.29442)
+  (2026), and [_Agents That Edit Documents_](https://arxiv.org/abs/2609.23953)
+  (2026): inaccurate self-reporting grows as sessions go on; agents misreport
+  their own edits → the Ledger line is a claim verified against the file hash.
+- Zhong et al., [_ImpossibleBench_](https://arxiv.org/abs/2510.20270) (2025)
+  and related reward-hacking work: isolating tests removes cheating →
+  append-only Acceptance and Checks sections.
+- Tsui, [_Self-Correction Bench_](https://arxiv.org/abs/2507.02778) (2025),
+  the "self-correction blind spot": models correct an error when it is
+  attributed to someone else, not when it is in their own output → reviewer
+  in a fresh context, artefacts only.
+- Norman, Rivera & Hughes, [_Reliability without Validity_](https://arxiv.org/abs/2606.19544)
+  (2026), a 21-judge study, and Thakur et al.,
+  [_Judging the Judges_](https://arxiv.org/abs/2406.12624) (2025): judge
+  agreement is weaker than it looks; only the strongest judges align
+  reasonably with humans → code verification of quotes, flags routed to the
+  human, capable reviewer.
+- Guo et al., [_When Context Changes_](https://arxiv.org/abs/2609.38866)
+  (2026), and [_Unable to Forget_](https://arxiv.org/abs/2506.08184) (2025):
+  stale values win over updates → superseded claims leave the live ledger.
+- Luo, Kasirzadeh & Shah, [_The More You Automate, the Less You See: Hidden
+  Pitfalls of AI Scientist Systems_](https://arxiv.org/abs/2509.08713) (2025):
+  post-hoc selection bias → success criteria fixed and locked before fitting.
+- Anthropic, [_Harness design for long-running application development_](https://www.anthropic.com/engineering/harness-design-long-running-apps)
   (2026): generator/evaluator separation and evaluators that check artefacts.
-- Comparative evidence on specification checking (VeriSpec-style LLM
-  verification vs test-based CASCADE-style checks): reading is low-precision,
+- Comparative evidence on specification checking (LLM verification such as
+  [VeriSpec](https://arxiv.org/abs/2610.01847) vs test-based checks such as
+  [CASCADE](https://arxiv.org/abs/2604.19400)): reading is low-precision,
   execution is high-precision → "no running of tests" is a deliberate
   non-goal, and reading-based flags are questions, not verdicts.

@@ -48,8 +48,7 @@ off, no `/supervise`. Defaults taken without asking, per his preference:
 - **CREDITS.md** is Boris's longer version (the "How it differs" sections), reworded where it
   described ledger mode as a mode of pi-supervisor, with one factual fix: the compaction
   paragraph said `beforeCompaction` asks the agent for a ledger update; the code starts a
-  background review instead. Citation corrections raised earlier (Luo et al., Self-Correction
-  Bench 2025, the relevance of "Agents That Edit Documents") are not applied; they wait on Boris.
+  background review instead. The research citations are as corrected on master (PR #3).
   It still mentions an "optional anchor re-injection" that is not implemented.
 - **Not done:** no live Pi run of the split plugin yet (tests and the offline Pi probe only).
 
