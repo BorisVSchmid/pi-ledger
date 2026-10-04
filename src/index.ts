@@ -33,6 +33,7 @@ import {
   loadLedgerConfig,
   type LedgerConfig,
 } from './ledger/config.js';
+import { LedgerRuntime } from './ledger/runtime.js';
 import {
   extractMessages,
   buildCompactionSummary,
@@ -89,6 +90,7 @@ export default function (pi: ExtensionAPI) {
   // Ledger mode is opt-in via .pi/supervisor-config.json ("mode": "ledger").
   // Every ledger-mode behaviour is gated on this; goal mode is unchanged.
   let ledgerConfig: LedgerConfig = defaultConfig();
+  const ledger = new LedgerRuntime(pi);
 
   pi.on('input', (event) => {
     if (event.source === 'interactive' || event.source === 'rpc') {
@@ -97,6 +99,14 @@ export default function (pi: ExtensionAPI) {
   });
   pi.on('before_agent_start', () => {
     userInputEpoch++;
+  });
+
+  // ---- Ledger mode: turn baseline and run log ----
+  pi.on('before_agent_start', async (_event, ctx) => {
+    if (isLedgerMode(ledgerConfig)) await ledger.onAgentStart(ctx, ledgerConfig);
+  });
+  pi.on('tool_call', async (event, ctx) => {
+    if (isLedgerMode(ledgerConfig)) await ledger.onToolCall(event, ctx, ledgerConfig);
   });
 
   const startSupervisionFromModel = async (
@@ -142,6 +152,7 @@ export default function (pi: ExtensionAPI) {
     currentCtx = ctx;
     ledgerConfig = loadLedgerConfig(ctx.cwd);
     if (isLedgerMode(ledgerConfig)) {
+      ledger.load(ctx);
       ctx.ui.notify('Supervisor: ledger mode', 'info');
     }
     state.loadFromSession(ctx);
@@ -244,6 +255,13 @@ export default function (pi: ExtensionAPI) {
 
   pi.on('agent_settled', async (_event, ctx) => {
     currentCtx = ctx;
+    if (isLedgerMode(ledgerConfig)) {
+      try {
+        await ledger.onSettled(ctx, ledgerConfig);
+      } catch (err) {
+        ctx.ui.notify(`Supervisor: ledger monitor failed (${String(err)})`, 'warning');
+      }
+    }
     if (!state.isActive()) return;
     const inputEpochAtStart = userInputEpoch;
 

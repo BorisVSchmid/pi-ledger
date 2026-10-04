@@ -51,9 +51,15 @@ export interface LedgerConfig {
     cjkRatioMax: number;
     runCommands: string[];
   };
+  routing: {
+    /** Deterministic findings that may steer without a human decision. */
+    autoSteer: string[];
+    notifyOnly: string[];
+    neverRepeatSteer: boolean;
+  };
   compaction: {
-    /** Propose edits to compaction summaries that repeat crossed-out or contradicted items. */
-    proposeSummaryEdits: boolean;
+    /** After each compaction, add a supervisor note flagging stale statements in the summary. */
+    annotateSummaries: boolean;
   };
   upstream: {
     reframeEscalation: boolean;
@@ -105,8 +111,13 @@ export function defaultConfig(): LedgerConfig {
       cjkRatioMax: 0.01,
       runCommands: ['Rscript', 'cmdstan', 'python', 'clj', 'make'],
     },
+    routing: {
+      autoSteer: ['LEDGER_LINE_MISSING', 'LEDGER_CLAIMED_NO_CHANGE', 'LEDGER_CHANGED_UNCLAIMED'],
+      notifyOnly: ['LOCKED_SECTION_EDITED', 'LANGUAGE_DRIFT', 'INJECTION', 'FLAG', 'TURN_FINDING'],
+      neverRepeatSteer: true,
+    },
     compaction: {
-      proposeSummaryEdits: true,
+      annotateSummaries: true,
     },
     upstream: {
       reframeEscalation: false,

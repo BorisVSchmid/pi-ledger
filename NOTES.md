@@ -196,3 +196,20 @@ existing summary for acceptance as described above.
 - `src/index.ts`: config loaded on each session load; ledger mode shows a notice. No other
   behaviour changes in either mode.
 - `tests/ledger-config.test.ts`: 6 tests. Suite: 15 files, 212 tests pass; `tsc` clean.
+
+## Deliverable 3: monitor
+
+- `src/ledger/checks.ts`: the provided module, formatted to repo style, with fixes: D1 accepts
+  `**Ledger:**` and "unchanged — reason"; D2 returns no mismatch without a baseline;
+  `snapshotFiles` honours `files.ignore`.
+- `src/ledger/monitor.ts`: pure `evaluateTurn` (D1, D2, D3, D5, injection) and `routeFindings`
+  (templated steers from brief 5.4, never repeated per `(kind, ledger hash)`).
+- `src/ledger/runtime.ts`: baseline (MEMENTO.md + model snapshot) at `before_agent_start`, so
+  edits made by the human between turns are not attributed to the agent; `tool_call` appends run
+  commands to `runs.jsonl`; `agent_settled` runs the monitor, steers or notifies, writes FLAGS.md.
+- `src/ledger/state.ts`: ledger state persisted as a `supervisor-ledger-state` custom entry.
+- D4 keeps the last turn's diff in memory; the reviewer (deliverable 5) diffs against a snapshot
+  taken at the last review instead of accumulating per-turn hunks, so line numbers stay correct.
+- `ledger-mode-brief/` is excluded from prettier so the brief stays verbatim and CI's
+  `format:check` passes.
+- Tests: `tests/ledger-monitor.test.ts` (17). Suite: 16 files, 229 tests pass; `tsc` clean.
