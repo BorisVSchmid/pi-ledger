@@ -40,3 +40,6 @@ media/*.mov
 
 # Design brief, kept verbatim
 ledger-mode-brief/
+
+# Test fixtures, kept as written
+tests/fixtures/

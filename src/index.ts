@@ -180,11 +180,21 @@ export default function (pi: ExtensionAPI) {
     if (state.isActive()) {
       state.persist();
     }
+    // Ledger mode: review the model before context is lost. Runs in the
+    // background on artefacts only, so compaction is not delayed.
+    if (isLedgerMode(ledgerConfig) && ledgerConfig.reviewer.triggers.beforeCompaction) {
+      ledger.startReview(ctx, ledgerConfig, 'before_compaction');
+    }
   });
 
   // ---- After compaction: reload state and continue if agent is working ----
   pi.on('session_compact', async (event, ctx) => {
     currentCtx = ctx;
+    // Ledger mode: the summary stays as written; a separate supervisor note
+    // flags statements in it that the ledger has since crossed out or contradicted.
+    if (isLedgerMode(ledgerConfig) && ledgerConfig.compaction.annotateSummaries) {
+      ledger.startCompactionNote(ctx, ledgerConfig, event.compactionEntry.summary);
+    }
     state.loadFromSession(ctx);
 
     if (!state.isActive()) {
@@ -549,6 +559,26 @@ export default function (pi: ExtensionAPI) {
       }
 
       ctx.ui.notify(`Supervisor active: "${truncateForNotify(trimmed, 25)}"`, 'info');
+    },
+  });
+
+  // ---- /review: ask for a review now (ledger mode) ----
+
+  pi.registerCommand('review', {
+    description: 'Ledger mode: review the model now (/review [note for the reviewer])',
+    handler: async (args, ctx) => {
+      if (!isLedgerMode(ledgerConfig)) {
+        ctx.ui.notify('/review is only available in ledger mode.', 'warning');
+        return;
+      }
+      if (!ledgerConfig.reviewer.triggers.onCommand) {
+        ctx.ui.notify('/review is disabled in supervisor-config.json.', 'warning');
+        return;
+      }
+      const note = args?.trim() || undefined;
+      if (!ledger.startReview(ctx, ledgerConfig, 'command', note)) {
+        ctx.ui.notify('A review is already running.', 'info');
+      }
     },
   });
 

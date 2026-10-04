@@ -228,3 +228,47 @@ existing summary for acceptance as described above.
 - `/supervise register` and `/supervise metrics`, intercepted only in ledger mode.
 - Spec seeding on session start from `## P<n>` headings in `MODEL_SPEC.md`.
 - Tests: `tests/ledger-register.test.ts` (6). Suite: 17 files, 235 tests pass.
+
+## Deliverable 5: reviewer and compaction note
+
+- `src/ledger/reviewer.ts` (pure): input builder in the brief's block order, `[Model Files]` with
+  line numbers (smallest files whole, largest truncated, with a note), `[Model Edits]` diffed
+  against the snapshot of the last review (`.pi/supervisor-review-snapshot.json`), agent summary
+  labelled as a claim; JSON extraction; shape checks; verification; triggers.
+- Verification: a `file:line` side verifies if the quote is in that file within 5 lines of the
+  cited line (this covers both changed and unchanged files, which `locInHunks` alone would not);
+  `MEMENTO.md#…` and `MODEL_SPEC.md#…` sides verify against those files. Failed flags and register
+  edits are dropped and counted. A reviewer `stated` edit is stored as `reviewer (<source>)`, so a
+  model cannot overrule the spec or the human.
+- `src/ledger/model-call.ts`: fresh in-memory session per call, disposed afterwards, with
+  `reviewer.thinking`; fallback model on unavailability or failure; one retry on invalid JSON,
+  then fail open. `reviewer.model: null` uses the supervisor model, then the chat model.
+  `maxTokens` is not passed: `createAgentSession` has no such option.
+- `src/session/supervisor-session.ts`: optional `thinkingLevel` argument (goal mode unchanged).
+- Triggers after each turn, at most one review per turn and one at a time, run in the background:
+  `register_change` (hunk contains `@concept` or overlaps a recorded realization, or the last
+  review grew the register), `breakpoint` (`## Next` or `## Checks` changed), `backstop`
+  (unreviewed model edits and N turns since the last review). `before_compaction` starts a review
+  in the background without delaying compaction. `/review [note]` runs one on demand.
+- Compaction note (agreed design): after `session_compact`, the reviewer model sees only the new
+  summary, `MEMENTO.md` and `MODEL_SPEC.md` (`COMPACTION_NOTE_PROMPT`). Items whose summary quote
+  and ledger quote both verify become one `supervisor-compaction-note` custom message placed after
+  the summary. The summary is not changed. Off with `compaction.annotateSummaries: false`.
+- Prompts embedded in `src/ledger/prompts.ts` (REVIEWER and LEDGER_TURN verbatim from the brief);
+  a project can override each with `.pi/REVIEWER.md`, `.pi/LEDGER_TURN.md`, `.pi/COMPACTION_NOTE.md`.
+- Fixture: `tests/fixtures/ledger/` (base R SEIR model plus the nine seeded variants).
+  `scripts/ledger-fixture.sh <variant> <dir> [provider/model]` materialises one for a live run.
+- Tests: `tests/ledger-fixture.test.ts` (19), `tests/ledger-model-call.test.ts` (4). Suite: 19
+  files, 258 tests pass.
+
+### Reviewer evaluation (model-dependent; not run here)
+
+No model credentials are available in this environment, so the reviewer criteria of brief
+section 8 have not been measured. Manual procedure, per model and per variant 1–5, three runs:
+
+1. `scripts/ledger-fixture.sh <variant> /tmp/fx-<variant> <provider/model>`
+2. `cd /tmp/fx-<variant> && pi` (with this extension installed), then `/review`.
+3. Record from `.pi/FLAGS.md` and `/supervise metrics`: whether the seeded inconsistency is
+   flagged (and with which type), other flags (false flags), `review.flags_dropped_unverified`,
+   and whether the restatement in FLAGS.md matches the fixture's intended model.
+4. Run `base` the same way: every flag there is a false flag.

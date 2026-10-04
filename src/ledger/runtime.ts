@@ -20,7 +20,52 @@ import {
 import { evaluateTurn, routeFindings, type FindingKind } from './monitor.js';
 import { addNotice, bump, LedgerStateStore, type LedgerState } from './state.js';
 import { renderFlagsFile } from './flags-file.js';
-import { applyEdits, renderRegister, specStatements } from './register.js';
+import { addFlag, applyEdits, renderRegister, specStatements } from './register.js';
+import { callJson } from './model-call.js';
+import { COMPACTION_NOTE_PROMPT, REVIEWER_PROMPT } from './prompts.js';
+import {
+  automaticTrigger,
+  buildReviewerPrompt,
+  coerceReviewerOutput,
+  coerceStaleItems,
+  pickAgentSummary,
+  renderCompactionNote,
+  verifyReview,
+  verifyStaleItems,
+  type ReviewReason,
+  type VerifyContext,
+} from './reviewer.js';
+
+/** Snapshot of model files at the last review, so [Model Edits] spans all turns since. */
+const REVIEW_SNAPSHOT_FILE = '.pi/supervisor-review-snapshot.json';
+export const COMPACTION_NOTE_TYPE = 'supervisor-compaction-note';
+
+/** A project may override a built-in prompt with .pi/<name>. */
+async function loadPrompt(cwd: string, name: string, builtin: string): Promise<string> {
+  return (await readTextOrNull(path.join(cwd, '.pi', name)))?.trim() || builtin;
+}
+
+/** Visible text of every assistant message on the branch, oldest first. */
+export function assistantTexts(ctx: ExtensionContext): string[] {
+  const out: string[] = [];
+  for (const entry of ctx.sessionManager.getBranch() as Array<{
+    type: string;
+    message?: { role?: string; content?: unknown };
+  }>) {
+    if (entry.type !== 'message' || entry.message?.role !== 'assistant') continue;
+    const c = entry.message.content;
+    if (typeof c === 'string') out.push(c);
+    else if (Array.isArray(c)) {
+      out.push(
+        c
+          .filter((b: { type?: string }) => b?.type === 'text')
+          .map((b: { text?: string }) => b.text ?? '')
+          .join('\n')
+      );
+    }
+  }
+  return out;
+}
 
 interface Baseline {
   ledger: string | null;
@@ -73,6 +118,13 @@ export class LedgerRuntime {
   lastTurnDiff: SnapshotDiff | null = null;
   /** Snapshot at the end of the last turn; the next turn's baseline if none was taken. */
   private lastSnapshot: Snapshot | null = null;
+
+  /** Injectable for tests. */
+  callModel: typeof callJson = callJson;
+  /** The review currently running, if any (one at a time). */
+  pending: Promise<unknown> | null = null;
+  /** The compaction note currently running, if any. */
+  pendingNote: Promise<unknown> | null = null;
 
   constructor(private pi: ExtensionAPI) {
     this.store = new LedgerStateStore(pi);
@@ -144,6 +196,9 @@ export class LedgerRuntime {
     const modelDiff = before ? diffSnapshots(before, after) : null;
     this.lastTurnDiff = modelDiff;
     this.lastSnapshot = after;
+    if (modelDiff && modelDiff.hunks.length + modelDiff.removed.length > 0) {
+      state.unreviewedEdits = true;
+    }
 
     const findings = evaluateTurn({
       assistantText: lastAssistantText(ctx),
@@ -184,6 +239,198 @@ export class LedgerRuntime {
 
     if (newNotices > 0) await this.writeFlags(ctx, config);
     if (routed.steer) this.pi.sendUserMessage(routed.steer.text, { deliverAs: 'followUp' });
+
+    const reason = automaticTrigger({
+      turn: state.turn,
+      lastReviewTurn: state.lastReviewTurn,
+      turnDiff: modelDiff,
+      modelEditsSinceReview: state.unreviewedEdits,
+      register: state.register,
+      registerGrewLastReview: state.registerGrewLastReview,
+      ledgerBefore,
+      ledgerAfter,
+      triggers: config.reviewer.triggers,
+    });
+    if (reason) this.startReview(ctx, config, reason);
+  }
+
+  // ---------- reviewer ----------
+
+  private verifyContext(
+    config: LedgerConfig,
+    snapshot: Snapshot,
+    ledger: string | null,
+    spec: string | null
+  ): VerifyContext {
+    return { snapshot, ledger, ledgerName: config.files.ledger, spec, specName: config.files.spec };
+  }
+
+  /** Start a review in the background unless one is running. Returns false if busy. */
+  startReview(
+    ctx: ExtensionContext,
+    config: LedgerConfig,
+    reason: ReviewReason,
+    note?: string
+  ): boolean {
+    if (this.pending) return false;
+    this.pending = this.review(ctx, config, reason, note)
+      .catch((err) => ctx.ui.notify(`Supervisor: review failed (${String(err)})`, 'warning'))
+      .finally(() => {
+        this.pending = null;
+      });
+    return true;
+  }
+
+  async review(
+    ctx: ExtensionContext,
+    config: LedgerConfig,
+    reason: ReviewReason,
+    note?: string
+  ): Promise<void> {
+    const state = this.state();
+    const [ledger, spec, snapshot, previous] = await Promise.all([
+      readTextOrNull(this.ledgerPath(ctx, config)),
+      readTextOrNull(path.resolve(ctx.cwd, config.files.spec)),
+      this.snapshot(ctx, config),
+      readTextOrNull(path.resolve(ctx.cwd, REVIEW_SNAPSHOT_FILE)),
+    ]);
+    let before: Snapshot | null = null;
+    try {
+      before = previous ? (JSON.parse(previous) as Snapshot) : null;
+    } catch {
+      before = null;
+    }
+
+    const userPrompt = buildReviewerPrompt({
+      spec,
+      register: state.register,
+      ledger,
+      snapshot,
+      editsSinceReview: before ? diffSnapshots(before, snapshot) : null,
+      agentSummary: pickAgentSummary(assistantTexts(ctx)),
+      note,
+      maxModelFileChars: config.reviewer.maxModelFileChars,
+      inputs: config.reviewer.inputs,
+    });
+
+    ctx.ui.notify(`Supervisor: reviewing the model (${reason})…`, 'info');
+    bump(state, `review.${reason}`);
+    const result = await this.callModel(ctx, {
+      model: config.reviewer.model,
+      fallbackModel: config.reviewer.fallbackModel,
+      thinking: config.reviewer.thinking,
+      systemPrompt: await loadPrompt(ctx.cwd, 'REVIEWER.md', REVIEWER_PROMPT),
+      userPrompt,
+    });
+    const output = result.ok ? coerceReviewerOutput(result.json) : undefined;
+    if (!output) {
+      bump(state, 'review.failed');
+      this.store.persist();
+      ctx.ui.notify(
+        `Supervisor: review produced nothing usable (${result.ok ? 'unexpected JSON' : result.error}).`,
+        'warning'
+      );
+      return;
+    }
+
+    const verified = verifyReview(output, this.verifyContext(config, snapshot, ledger, spec));
+    const reg = state.register;
+    const sizeBefore = Object.values(reg.concepts).reduce(
+      (n, c) => n + 1 + c.realizations.length,
+      0
+    );
+    applyEdits(reg, verified.edits, state.turn);
+    const sizeAfter = Object.values(reg.concepts).reduce(
+      (n, c) => n + 1 + c.realizations.length,
+      0
+    );
+    const created = verified.flags
+      .map((f) => addFlag(reg, f, state.turn))
+      .filter((f) => f !== null);
+    if (verified.restatement) reg.restatement = { text: verified.restatement, turn: state.turn };
+
+    state.lastReviewTurn = state.turn;
+    state.registerGrewLastReview = sizeAfter > sizeBefore;
+    state.unreviewedEdits = false;
+    bump(state, 'review.done');
+    bump(state, 'review.flags_new', created.length);
+    bump(state, 'review.flags_dropped_unverified', verified.droppedFlags);
+    bump(state, 'review.edits_dropped_unverified', verified.droppedEdits);
+    this.store.persist();
+
+    await this.writeFile(ctx, REVIEW_SNAPSHOT_FILE, JSON.stringify(snapshot));
+    await this.exportRegister(ctx, config);
+    await this.writeFlags(ctx, config);
+    ctx.ui.notify(
+      `Supervisor review: ${created.length} new question(s)` +
+        (verified.droppedFlags ? `, ${verified.droppedFlags} dropped (quotes not found)` : '') +
+        (created.length ? ' — see /flag' : ''),
+      created.length ? 'warning' : 'info'
+    );
+  }
+
+  // ---------- compaction note ----------
+
+  /** After compaction: check the summary against the ledger and add a note if anything is stale. */
+  startCompactionNote(ctx: ExtensionContext, config: LedgerConfig, summary: string): void {
+    this.pendingNote = this.compactionNote(ctx, config, summary)
+      .catch((err) =>
+        ctx.ui.notify(`Supervisor: compaction check failed (${String(err)})`, 'warning')
+      )
+      .finally(() => {
+        this.pendingNote = null;
+      });
+  }
+
+  async compactionNote(
+    ctx: ExtensionContext,
+    config: LedgerConfig,
+    summary: string
+  ): Promise<void> {
+    const state = this.state();
+    const [ledger, spec] = await Promise.all([
+      readTextOrNull(this.ledgerPath(ctx, config)),
+      readTextOrNull(path.resolve(ctx.cwd, config.files.spec)),
+    ]);
+    if (!ledger) return;
+    const userPrompt = [
+      `[Compaction Summary]\n${summary}\n`,
+      `[Ledger]\n${ledger}\n`,
+      `[Model Spec]\n${spec ?? '(absent)'}\n`,
+    ].join('\n');
+    const result = await this.callModel(ctx, {
+      model: config.reviewer.model,
+      fallbackModel: config.reviewer.fallbackModel,
+      thinking: config.reviewer.thinking,
+      systemPrompt: await loadPrompt(ctx.cwd, 'COMPACTION_NOTE.md', COMPACTION_NOTE_PROMPT),
+      userPrompt,
+    });
+    const items = result.ok ? coerceStaleItems(result.json) : undefined;
+    if (!items) {
+      bump(state, 'compaction_note.failed');
+      this.store.persist();
+      return;
+    }
+    const { kept, dropped } = verifyStaleItems(
+      items,
+      summary,
+      this.verifyContext(config, {}, ledger, spec)
+    );
+    bump(state, 'compaction_note.items', kept.length);
+    bump(state, 'compaction_note.dropped_unverified', dropped);
+    this.store.persist();
+    if (kept.length === 0) return;
+    // No triggerTurn: Pi appends it now when idle, or at the end of the current turn.
+    this.pi.sendMessage({
+      customType: COMPACTION_NOTE_TYPE,
+      content: renderCompactionNote(kept),
+      display: true,
+      details: { items: kept },
+    });
+    ctx.ui.notify(
+      `Supervisor: ${kept.length} stale item(s) noted after the compaction summary.`,
+      'info'
+    );
   }
 
   /** Seed stated meanings from MODEL_SPEC.md (session start). Returns the number of concepts seeded. */

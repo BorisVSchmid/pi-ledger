@@ -31,6 +31,12 @@ export interface LedgerState {
   metrics: Record<string, number>;
   /** Concept-level model register and reviewer flags. */
   register: Register;
+  /** Turn of the last completed review; -1 before the first. */
+  lastReviewTurn: number;
+  /** The last review added a concept or realization (onRegisterChange trigger). */
+  registerGrewLastReview: boolean;
+  /** Model files changed since the last review. */
+  unreviewedEdits: boolean;
 }
 
 export function emptyLedgerState(): LedgerState {
@@ -44,6 +50,9 @@ export function emptyLedgerState(): LedgerState {
     noticeKeys: [],
     metrics: {},
     register: emptyRegister(),
+    lastReviewTurn: -1,
+    registerGrewLastReview: false,
+    unreviewedEdits: false,
   };
 }
 
