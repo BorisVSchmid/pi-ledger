@@ -10,6 +10,7 @@ import {
   type Snapshot,
   type SnapshotDiff,
   renderHunks,
+  diffLines,
 } from './checks.js';
 import { registerForPrompt, type FlagInput, type Register, type RegisterEdit } from './register.js';
 
@@ -393,4 +394,74 @@ export function renderCompactionNote(items: StaleItem[]): string {
   }
   lines.push('', 'Treat MEMENTO.md as the current record.');
   return lines.join('\n');
+}
+
+// ---------- optional per-turn model check (turnModel) ----------
+
+export const TURN_FINDING_KINDS = [
+  'UNRECORDED_CLAIM',
+  'UNMARKED_CONTRADICTION',
+  'UNSUPPORTED_RESULT',
+  'UNRECORDED_ASSUMPTION',
+] as const;
+
+export interface TurnFinding {
+  kind: (typeof TURN_FINDING_KINDS)[number];
+  quote: string;
+  ledger_quote: string | null;
+  note: string;
+}
+
+export function buildTurnPrompt(i: {
+  ledger: string | null;
+  ledgerBefore: string | null | undefined;
+  userText: string;
+  assistantText: string;
+  turnDiff: SnapshotDiff | null;
+}): string {
+  const ledgerDiff =
+    i.ledger !== null && typeof i.ledgerBefore === 'string' && i.ledgerBefore !== i.ledger
+      ? diffLines('MEMENTO.md', i.ledgerBefore, i.ledger)
+          .flatMap((h) => [`@@ new lines ${h.newStart}-${h.newEnd}`, ...h.lines])
+          .join('\n')
+      : '(no change)';
+  return [
+    `[Ledger File]\n${i.ledger ?? '(absent)'}\n`,
+    `[Ledger Diff]\n${ledgerDiff}\n`,
+    `[Turn]\nHuman:\n${i.userText || '(none)'}\n\nAssistant:\n${i.assistantText || '(none)'}\n`,
+    i.turnDiff && i.turnDiff.hunks.length ? renderHunks(i.turnDiff) : '[Model Edits]\n(none)\n',
+  ].join('\n');
+}
+
+export function coerceTurnFindings(raw: unknown): TurnFinding[] | undefined {
+  if (typeof raw !== 'object' || raw === null) return undefined;
+  const list = (raw as { findings?: unknown }).findings;
+  if (!Array.isArray(list)) return undefined;
+  return list.filter(
+    (f): f is TurnFinding =>
+      typeof f === 'object' &&
+      f !== null &&
+      (TURN_FINDING_KINDS as readonly string[]).includes((f as TurnFinding).kind) &&
+      isStr((f as TurnFinding).quote) &&
+      ((f as TurnFinding).ledger_quote == null ||
+        typeof (f as TurnFinding).ledger_quote === 'string')
+  );
+}
+
+/** Quote must be in the turn text or the added model lines; a ledger quote must be in the ledger. */
+export function verifyTurnFindings(
+  findings: TurnFinding[],
+  turnText: string,
+  turnDiff: SnapshotDiff | null,
+  ledger: string | null
+): { kept: TurnFinding[]; dropped: number } {
+  const added = (turnDiff?.hunks ?? [])
+    .flatMap((h) => h.lines.filter((l) => l.startsWith('+')).map((l) => l.slice(1)))
+    .join('\n');
+  const kept = findings.filter(
+    (f) =>
+      (verifyQuote(f.quote, turnText) || verifyQuote(f.quote, added)) &&
+      (!f.ledger_quote || (!!ledger && verifyQuote(f.ledger_quote, ledger)))
+  );
+  return { kept, dropped: findings.length - kept.length };
 }

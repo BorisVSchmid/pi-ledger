@@ -22,10 +22,13 @@ import { addNotice, bump, LedgerStateStore, type LedgerState } from './state.js'
 import { renderFlagsFile } from './flags-file.js';
 import { addFlag, applyEdits, renderRegister, specStatements } from './register.js';
 import { callJson } from './model-call.js';
-import { COMPACTION_NOTE_PROMPT, REVIEWER_PROMPT } from './prompts.js';
+import { COMPACTION_NOTE_PROMPT, LEDGER_TURN_PROMPT, REVIEWER_PROMPT } from './prompts.js';
 import {
   automaticTrigger,
   buildReviewerPrompt,
+  buildTurnPrompt,
+  coerceTurnFindings,
+  verifyTurnFindings,
   coerceReviewerOutput,
   coerceStaleItems,
   pickAgentSummary,
@@ -43,6 +46,27 @@ export const COMPACTION_NOTE_TYPE = 'supervisor-compaction-note';
 /** A project may override a built-in prompt with .pi/<name>. */
 async function loadPrompt(cwd: string, name: string, builtin: string): Promise<string> {
   return (await readTextOrNull(path.join(cwd, '.pi', name)))?.trim() || builtin;
+}
+
+/** Text of the last user message on the branch. */
+export function lastUserText(ctx: ExtensionContext): string {
+  const entries = ctx.sessionManager.getBranch() as Array<{
+    type: string;
+    message?: { role?: string; content?: unknown };
+  }>;
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const m = entries[i].message;
+    if (entries[i].type !== 'message' || m?.role !== 'user') continue;
+    if (typeof m.content === 'string') return m.content;
+    if (Array.isArray(m.content)) {
+      return m.content
+        .filter((b: { type?: string }) => b?.type === 'text')
+        .map((b: { text?: string }) => b.text ?? '')
+        .join('\n');
+    }
+    return '';
+  }
+  return '';
 }
 
 /** Visible text of every assistant message on the branch, oldest first. */
@@ -125,6 +149,8 @@ export class LedgerRuntime {
   pending: Promise<unknown> | null = null;
   /** The compaction note currently running, if any. */
   pendingNote: Promise<unknown> | null = null;
+  /** The optional per-turn model check currently running, if any. */
+  pendingTurn: Promise<unknown> | null = null;
 
   constructor(private pi: ExtensionAPI) {
     this.store = new LedgerStateStore(pi);
@@ -200,8 +226,9 @@ export class LedgerRuntime {
       state.unreviewedEdits = true;
     }
 
+    const assistantText = lastAssistantText(ctx);
     const findings = evaluateTurn({
-      assistantText: lastAssistantText(ctx),
+      assistantText,
       ledgerBefore,
       ledgerAfter,
       modelDiff,
@@ -252,6 +279,59 @@ export class LedgerRuntime {
       triggers: config.reviewer.triggers,
     });
     if (reason) this.startReview(ctx, config, reason);
+
+    if (config.turnModel && !this.pendingTurn) {
+      const input = {
+        ledger: ledgerAfter,
+        ledgerBefore,
+        userText: lastUserText(ctx),
+        assistantText,
+        turnDiff: modelDiff,
+      };
+      this.pendingTurn = this.turnCheck(ctx, config, input)
+        .catch((err) => ctx.ui.notify(`Supervisor: turn check failed (${String(err)})`, 'warning'))
+        .finally(() => {
+          this.pendingTurn = null;
+        });
+    }
+  }
+
+  /** Optional per-turn model check (turnModel): verified findings become TURN_FINDING notices. */
+  async turnCheck(
+    ctx: ExtensionContext,
+    config: LedgerConfig,
+    input: Parameters<typeof buildTurnPrompt>[0]
+  ): Promise<void> {
+    const state = this.state();
+    const result = await this.callModel(ctx, {
+      model: config.turnModel,
+      fallbackModel: null,
+      systemPrompt: await loadPrompt(ctx.cwd, 'LEDGER_TURN.md', LEDGER_TURN_PROMPT),
+      userPrompt: buildTurnPrompt(input),
+    });
+    const findings = result.ok ? coerceTurnFindings(result.json) : undefined;
+    if (!findings) {
+      bump(state, 'turn_check.failed');
+      this.store.persist();
+      return;
+    }
+    const turnText = `${input.userText}\n${input.assistantText}`;
+    const { kept, dropped } = verifyTurnFindings(findings, turnText, input.turnDiff, input.ledger);
+    bump(state, 'turn_check.dropped_unverified', dropped);
+    let added = 0;
+    for (const f of kept) {
+      const detail = `${f.kind}: "${f.quote.trim()}"${f.note ? ` — ${f.note.trim()}` : ''}`;
+      const key = `TURN_FINDING:${hashText(f.kind + f.quote)}`;
+      if (
+        addNotice(state, { kind: 'TURN_FINDING', detail, turn: state.turn, ts: Date.now() }, key)
+      ) {
+        added++;
+        bump(state, 'finding.TURN_FINDING');
+        ctx.ui.notify(`Supervisor: ${detail}`, 'warning');
+      }
+    }
+    this.store.persist();
+    if (added) await this.writeFlags(ctx, config);
   }
 
   // ---------- reviewer ----------

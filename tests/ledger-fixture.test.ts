@@ -270,6 +270,56 @@ describe('compaction note', () => {
   });
 });
 
+describe('optional turnModel (variant 6, fit claim without a run)', () => {
+  it('turns verified findings into TURN_FINDING notices and drops invented ones', async () => {
+    const h = harness();
+    h.config.turnModel = 'cheap/model';
+    h.config.reviewer.triggers = {
+      ...h.config.reviewer.triggers,
+      onRegisterChange: false,
+      onBreakpoint: false,
+    };
+    h.replies.push({
+      ok: true,
+      json: {
+        findings: [
+          {
+            kind: 'UNSUPPORTED_RESULT',
+            quote: 'The model now fits the 2015-2018 data well',
+            ledger_quote: null,
+            note: 'no run id, no held-out evidence',
+          },
+          { kind: 'UNRECORDED_CLAIM', quote: 'R0 is about 3.2', ledger_quote: null, note: 'x' },
+          { kind: 'NOT_A_KIND', quote: 'The model now fits', ledger_quote: null, note: 'x' },
+        ],
+      },
+      model: null,
+    } as any);
+    await h.rt.onAgentStart(h.ctx, h.config);
+    h.reply(readFileSync(join(FIXTURE, 'variants', '6-fit-claim', 'reply.md'), 'utf8'));
+    await h.rt.onSettled(h.ctx, h.config);
+    await h.rt.pendingTurn;
+    const calls = (h.rt.callModel as any).mock.calls;
+    expect(calls[0][1].model).toBe('cheap/model');
+    expect(calls[0][1].userPrompt).toMatch(/\[Turn\]\nHuman:/);
+    const notices = h.rt.state().notices.filter((n) => n.kind === 'TURN_FINDING');
+    expect(notices).toHaveLength(1);
+    expect(notices[0].detail).toMatch(/^UNSUPPORTED_RESULT/);
+    expect(h.rt.state().metrics['turn_check.dropped_unverified']).toBe(1);
+    expect(h.pi.sendUserMessage).not.toHaveBeenCalled();
+    rmSync(h.cwd, { recursive: true, force: true });
+  });
+
+  it('makes no model call when turnModel is null (default)', async () => {
+    const h = harness();
+    await h.rt.onAgentStart(h.ctx, h.config);
+    h.reply('Ledger: unchanged');
+    await h.rt.onSettled(h.ctx, h.config);
+    expect(h.rt.callModel).not.toHaveBeenCalled();
+    rmSync(h.cwd, { recursive: true, force: true });
+  });
+});
+
 describe('triggers', () => {
   const base: TriggerInput = {
     turn: 5,

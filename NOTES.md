@@ -290,3 +290,13 @@ brief 5.6 at once:
   analysis path off they have nothing to switch.
 - Goal mode is unchanged (covered by a test that runs the same events in goal mode).
 - Tests: `tests/ledger-mode-switches.test.ts` (3), loading the full extension. Suite: 261 pass.
+
+## Deliverable 7: optional turnModel
+
+- Off by default (`turnModel: null`); no model call per turn unless set.
+- When set: after each turn, one background call with `LEDGER_TURN_PROMPT` and
+  `[Ledger File] [Ledger Diff] [Turn] [Model Edits]`; `[Turn]` is the last user message and the
+  assistant's visible reply (no reasoning, no tool output). Only the four kinds in the prompt are
+  accepted; the quote must be in the turn or the added model lines, and a ledger quote in the
+  ledger. Survivors are `TURN_FINDING` notices (never steers), deduplicated.
+- Tests: 2 in `tests/ledger-fixture.test.ts` (variant 6). Suite: 263 pass.
