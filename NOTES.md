@@ -36,7 +36,7 @@ commands). Defaults taken without asking:
   trigger another one because a turn without edits never reviews.
 - **`/flag <id> close [reason]`** replaces `intended` and `dismiss`, which were the same action.
   Both old words still work as aliases. Statuses are `open`, `sent`, `closed`.
-- **Compaction note reworded**: it lists summary statements that *differ* from the ledger and
+- **Compaction note reworded**: it lists summary statements that _differ_ from the ledger and
   says to check which is current, since the ledger can be behind. The prompt's key is
   `differs`; replies under the old `stale` key are still accepted.
 - **Model files:** top-level `*.{R,stan}` added to the default `modelFiles`; `**/archive/**`
