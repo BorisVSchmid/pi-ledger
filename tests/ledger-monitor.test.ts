@@ -169,7 +169,7 @@ describe('LedgerRuntime', () => {
       sendUserMessage: vi.fn(),
     };
     ctx = { cwd, ui: { notify }, sessionManager: { getBranch: () => branch } };
-    writeFileSync(join(cwd, 'MEMENTO.md'), LEDGER);
+    writeFileSync(join(cwd, 'LEDGER.md'), LEDGER);
     mkdirSync(join(cwd, 'R'));
     writeFileSync(join(cwd, 'R', 'model.R'), 'foi <- beta * I / N\n');
   });
@@ -208,8 +208,8 @@ describe('LedgerRuntime', () => {
     await rt.onAgentStart(ctx, config);
     reply('Ledger: unchanged');
     await rt.onSettled(ctx, config);
-    // human edits MEMENTO.md while idle
-    writeFileSync(join(cwd, 'MEMENTO.md'), LEDGER + '- A2: human note\n');
+    // human edits LEDGER.md while idle
+    writeFileSync(join(cwd, 'LEDGER.md'), LEDGER + '- A2: human note\n');
     await rt.onAgentStart(ctx, config);
     reply('Ledger: unchanged');
     await rt.onSettled(ctx, config);
@@ -223,7 +223,7 @@ describe('LedgerRuntime', () => {
     await rt.onAgentStart(ctx, config);
     writeFileSync(join(cwd, 'R', 'model.R'), 'foi <- beta * I / N\nfoi2 <- beta * I\n');
     writeFileSync(
-      join(cwd, 'MEMENTO.md'),
+      join(cwd, 'LEDGER.md'),
       LEDGER.replace('fails if peak outside Jun-Aug', 'fails if peak outside May-Sep')
     );
     reply('Ledger: C1 widened');

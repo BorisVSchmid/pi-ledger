@@ -43,14 +43,14 @@ describe('ledger config', () => {
     expect(config.reviewer.thinking).toBe('low');
     expect(config.reviewer.fallbackModel).toBeNull();
     expect(config.files.modelFiles).toEqual(['stan/*.stan']);
-    expect(config.files.ledger).toBe('MEMENTO.md');
+    expect(config.files.ledger).toBe('LEDGER.md');
   });
 
   it('project config wins over the global file', () => {
     writeGlobal({ files: { ledger: 'NOTES.md' } });
     writeProject({ autoEnable: false });
     expect(loadLedgerConfig(cwd, agentDir).autoEnable).toBe(false);
-    expect(loadLedgerConfig(cwd, agentDir).files.ledger).toBe('MEMENTO.md');
+    expect(loadLedgerConfig(cwd, agentDir).files.ledger).toBe('LEDGER.md');
   });
 
   it('falls back to the global file when the project has none', () => {

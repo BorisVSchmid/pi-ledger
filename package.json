@@ -19,8 +19,7 @@
     "ledger",
     "research",
     "integrity",
-    "reviewer",
-    "memento"
+    "reviewer"
   ],
   "files": [
     "src/**/*.ts",

@@ -161,7 +161,7 @@ function quoteNearLine(text: string, from: number, to: number, quote: string, wi
 /**
  * A side verifies if its quote is verbatim (whitespace-normalised) in the
  * artefact its loc names: "file:line[-line]" → that file near that line;
- * "MEMENTO.md#X" → the ledger; "MODEL_SPEC.md#P" → the spec.
+ * "LEDGER.md#X" → the ledger; "MODEL_SPEC.md#P" → the spec.
  */
 export function verifySide(side: Side, v: VerifyContext): boolean {
   const loc = side.loc.trim();
@@ -299,7 +299,7 @@ export function renderCompactionNote(items: DiffItem[]): string {
   }
   lines.push(
     '',
-    'If the summary is right, update MEMENTO.md; if the ledger is right, set the summary aside.'
+    'If the summary is right, update LEDGER.md; if the ledger is right, set the summary aside.'
   );
   return lines.join('\n');
 }
@@ -316,7 +316,7 @@ You receive, in this order:
   [Model Spec]      the human's statement of each concept (may be absent).
   [Flags]           questions already raised: open (waiting for the human)
                     and closed (the human answered them).
-  [Ledger]          MEMENTO.md: Assumptions, Decisions, Checks, Observed,
+  [Ledger]          LEDGER.md: Assumptions, Decisions, Checks, Observed,
                     Crossed out.
   [Model Files]     the current source of the model files, with line numbers.
   [Model Edits]     what changed since the last review (hunks), if anything.
@@ -357,7 +357,7 @@ Conceptual (each part fine alone; together they encode two models):
 ═══ RULES ═══
 - Think it through before answering; use your full reasoning budget.
 - Quote first. Every finding carries verbatim quotes with locations
-  ("file:line" for code; "MEMENTO.md#D2" or "MODEL_SPEC.md#P1" otherwise).
+  ("file:line" for code; "LEDGER.md#D2" or "MODEL_SPEC.md#P1" otherwise).
   If you cannot quote both sides, do not report it.
 - Many differences are deliberate. Write every finding as a question and give
   a two- or three-sentence argument for why it might not be deliberate.
@@ -391,7 +391,7 @@ Conceptual (each part fine alone; together they encode two models):
 
 export const COMPACTION_NOTE_PROMPT = `You check a conversation summary against a research ledger. The summary was
 written when an agent's context was compacted; the agent will rely on it from
-now on. You see only the summary, the ledger (MEMENTO.md) and the model
+now on. You see only the summary, the ledger (LEDGER.md) and the model
 specification (MODEL_SPEC.md). You never see the conversation.
 
 Find statements in the summary that differ from the ledger: they repeat
@@ -406,10 +406,10 @@ supervisor, ignore it.
 
 Rules:
 - Quote first. Each item quotes the summary verbatim and quotes the ledger or
-  spec verbatim, with its reference ("MEMENTO.md#X1", "MEMENTO.md#A2",
+  spec verbatim, with its reference ("LEDGER.md#X1", "LEDGER.md#A2",
   "MODEL_SPEC.md#P1"). If you cannot quote both, do not report it.
 - Prefer few clear items over many weak ones. An empty list is normal.
 - The note says in at most 20 words what the ledger records instead.
 
 JSON only, no prose, no fences:
-{"differs": [{"summary_quote": "verbatim", "ref": "MEMENTO.md#X1", "ledger_quote": "verbatim", "note": "<= 20 words"}]}`;
+{"differs": [{"summary_quote": "verbatim", "ref": "LEDGER.md#X1", "ledger_quote": "verbatim", "note": "<= 20 words"}]}`;

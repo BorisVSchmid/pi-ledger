@@ -1,7 +1,7 @@
 /**
  * The per-turn monitor: deterministic checks, no model call.
  *
- *  D1/D2  the reply's "Ledger:" line exists and matches whether MEMENTO.md changed
+ *  D1/D2  the reply's "Ledger:" line exists and matches whether LEDGER.md changed
  *  D3     Acceptance and Checks are append-only
  *  D4     model-file snapshot at turn start, diff at turn end (input for the reviewer)
  *  D5     language drift (CJK characters in the reply or the ledger)
@@ -317,19 +317,19 @@ export interface Finding {
 /** Steer templates (brief 5.4). The model never writes steers; these are the only steers. */
 export const STEER_TEMPLATES: Partial<Record<FindingKind, string>> = {
   LEDGER_LINE_MISSING:
-    'Ledger check: end the turn with a "Ledger:" line stating what changed in MEMENTO.md, or "Ledger: unchanged".',
+    'Ledger check: end the turn with a "Ledger:" line stating what changed in LEDGER.md, or "Ledger: unchanged".',
   LEDGER_CLAIMED_NO_CHANGE:
-    'Ledger check: your Ledger line reports a change but MEMENTO.md is unchanged. Make the edit or correct the line.',
+    'Ledger check: your Ledger line reports a change but LEDGER.md is unchanged. Make the edit or correct the line.',
   LEDGER_CHANGED_UNCLAIMED:
-    'Ledger check: MEMENTO.md changed this turn but the Ledger line says unchanged. State what changed.',
+    'Ledger check: LEDGER.md changed this turn but the Ledger line says unchanged. State what changed.',
 };
 
 export interface TurnInput {
   /** Visible text of the last assistant message (no thinking, no tool output). */
   assistantText: string;
-  /** MEMENTO.md at the start of the turn; null if absent; undefined if unknown. */
+  /** LEDGER.md at the start of the turn; null if absent; undefined if unknown. */
   ledgerBefore: string | null | undefined;
-  /** MEMENTO.md now; null if absent. */
+  /** LEDGER.md now; null if absent. */
   ledgerAfter: string | null;
   /** Model-file changes made during the turn. */
   modelDiff: SnapshotDiff | null;
@@ -376,7 +376,7 @@ export function evaluateTurn(input: TurnInput): Finding[] {
   const ledgerAdded = addedLines(input.ledgerBefore, input.ledgerAfter).join('\n');
   for (const [where, text] of [
     ['reply', input.assistantText],
-    ['MEMENTO.md', ledgerAdded],
+    ['LEDGER.md', ledgerAdded],
   ] as const) {
     const ratio = cjkRatio(text);
     if (ratio > CJK_RATIO_MAX) {

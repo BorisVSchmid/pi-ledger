@@ -458,3 +458,11 @@ The live run on Boris's PC showed four problems. Defaults chosen, no questions a
 Side effect: because the spec is now applied before each review, a spec statement always wins
 over a reviewer-stated value for the same concept (one fixture test updated accordingly).
 Tests: `tests/ledger-flag-fixes.test.ts` (13). Suite: 276 pass.
+
+## Ledger file renamed to LEDGER.md (2026-10-04)
+
+The ledger file is `LEDGER.md` (archive `LEDGER.archive.md`); the templates, example, fixtures and
+prompts follow. Earlier sections of these notes keep the old name `MEMENTO.md`. The format had
+diverged from ruslanlap/memento enough that the files are not interchangeable, so the old name is
+not read as a fallback: `legacyLedgerNotice` (src/config.ts) shows a one-line rename notice at
+session load when only `MEMENTO.md` exists. A config that sets `files.ledger` explicitly still wins.

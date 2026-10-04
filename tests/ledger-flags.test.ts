@@ -25,15 +25,15 @@ import type { JsonCallResult } from '../src/model-session.js';
 const c1Flag = (quoteA: string, question: string): FlagInput => ({
   concept: 'P2 Voles',
   type: 6,
-  a: { loc: 'MEMENTO.md#C1', quote: quoteA },
-  b: { loc: 'MEMENTO.md#R1', quote: 'Years 5-10: V 0.9-50' },
+  a: { loc: 'LEDGER.md#C1', quote: quoteA },
+  b: { loc: 'LEDGER.md#R1', quote: 'Years 5-10: V 0.9-50' },
   question,
 });
 
 describe('flag dedup', () => {
   it('treats the same anchors or nearby lines in the same file as one place', () => {
-    expect(sameLocation('MEMENTO.md#C1', 'memento.md#c1')).toBe(true);
-    expect(sameLocation('MEMENTO.md#C1', 'MEMENTO.md#C2')).toBe(false);
+    expect(sameLocation('LEDGER.md#C1', 'ledger.md#c1')).toBe(true);
+    expect(sameLocation('LEDGER.md#C1', 'LEDGER.md#C2')).toBe(false);
     expect(sameLocation('R/model.R:40', './R/model.R:42-44')).toBe(true);
     expect(sameLocation('R/model.R:40', 'R/model.R:44')).toBe(false);
     expect(sameLocation('R/model.R:40', 'R/fit.R:40')).toBe(false);
@@ -62,7 +62,7 @@ describe('flag dedup', () => {
   it('keeps flags at other places or on other concepts', () => {
     const store = emptyFlags();
     addFlag(store, c1Flag('a', 'q'), 1);
-    const elsewhere = { ...c1Flag('a', 'q'), b: { loc: 'MEMENTO.md#A1', quote: 'b' } };
+    const elsewhere = { ...c1Flag('a', 'q'), b: { loc: 'LEDGER.md#A1', quote: 'b' } };
     expect(addFlag(store, elsewhere, 2).flag?.id).toBe('F2');
     expect(addFlag(store, { ...c1Flag('a', 'q'), concept: 'P3 Foxes' }, 2).flag?.id).toBe('F3');
   });
@@ -184,7 +184,7 @@ const fixtureFlag = (question: string, quote = 'beta * I / N') => ({
   concept: 'P1 Transmission',
   type: 1,
   a: { loc: 'R/transmission.R:4', quote },
-  b: { loc: 'MEMENTO.md#A2', quote: 'frequency-dependent transmission' },
+  b: { loc: 'LEDGER.md#A2', quote: 'frequency-dependent transmission' },
   argument: 'x',
   question,
 });

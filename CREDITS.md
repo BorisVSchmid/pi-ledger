@@ -24,11 +24,13 @@ copying any text or code from it.
 - **ruslanlap/memento** — the ledger's categories and discipline: evidence
   attached to every claim, hypotheses that cannot authorise action, invalidated
   claims kept as "false claims a future agent might repeat", one verifiable
-  next action, verify-before-act. The file name `MEMENTO.md` comes from here.
+  next action, verify-before-act. The ledger format derives from its
+  `MEMENTO.md` but has since diverged (locked sections, run-id status lines,
+  tombstones), so pi-ledger names its file `LEDGER.md`.
 - **waterdrop26651/pi-memento** (Memento-skill) — predictions written before
   a run, hypotheses recorded with what evidence would change them, and a cold
   archive recalled only when needed. Our locked `## Checks` section and
-  `MEMENTO.archive.md` follow this.
+  `LEDGER.archive.md` follow this.
 - **fitchmultz/pi-posthorse** — treating older assistant prose as not being
   state, editing a current-state note section by section rather than
   rewriting it, and resetting from the note instead of summarising. Our
@@ -104,7 +106,9 @@ flagged; an Acceptance item counts as passed only when its status line cites
 a run id; superseded claims move to an archive with a one-line tombstone instead
 of staying crossed out in the live file. The skill remains the agent-side
 half: it is what tells the agent how to write and resume from the ledger.
-pi-ledger does not reimplement its handoff protocol.
+pi-ledger does not reimplement its handoff protocol. The two files are no
+longer interchangeable, which is why the ledger is `LEDGER.md` rather than
+`MEMENTO.md`; a memento skill pointed at it needs that file name.
 
 ### waterdrop26651/pi-memento (Memento-skill)
 
@@ -151,7 +155,7 @@ re-read its files from disk.
 
 pi-ledger borrows the habit of going back to the files after compaction.
 It runs nothing, measures nothing and decides nothing. Both can be active,
-but then autoresearch's living document and `MEMENTO.md` both claim to be the
+but then autoresearch's living document and `LEDGER.md` both claim to be the
 state of the work. Either point autoresearch's document at the ledger or
 tell the reviewer which one is authoritative.
 

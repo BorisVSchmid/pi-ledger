@@ -6,7 +6,7 @@
     "thinking": "high"
   },
   "files": {
-    "ledger": "MEMENTO.md",
+    "ledger": "LEDGER.md",
     "spec": "MODEL_SPEC.md",
     "modelFiles": ["*.{R,stan}", "R/**/*.R", "src/**/*.{R,stan,clj,py}", "models/**/*"],
     "ignore": ["**/node_modules/**", "**/.git/**", "**/renv/**", "**/archive/**"]

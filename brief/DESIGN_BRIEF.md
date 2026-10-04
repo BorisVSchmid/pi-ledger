@@ -31,7 +31,7 @@ in Pi: building and extending epidemiological and ecological models, fitting
 them, and judging whether results make sense. Drift in direction is allowed
 and expected. Two things must not drift silently:
 
-1. **The ledger.** `MEMENTO.md` is the record of what is assumed, decided,
+1. **The ledger.** `LEDGER.md` is the record of what is assumed, decided,
    predicted, observed and refuted, with evidence. It must keep up with the
    conversation, and claims in it must be true.
 2. **The model's coherence.** Parts that are individually valid can encode
@@ -140,7 +140,7 @@ judged, shown with Pi's `setStatus`:
   No Acceptance section reads `no Acceptance`.
 - Flags: open reviewer flags.
 - Ledger: `ledger current`, `ledger behind` (a D1/D2 finding on the last turn),
-  `locked section edited` (D3), `ledger not checked yet`, or `no MEMENTO.md`.
+  `locked section edited` (D3), `ledger not checked yet`, or `no LEDGER.md`.
 - `reviewing…` while a review runs.
 
 On/off: on at session start when the ledger file exists (`autoEnable`), else
@@ -163,7 +163,7 @@ Input blocks, in order:
    by its current `## P<n>` headings.
 2. `[Flags]`: open and closed flags, with the human's reasons, so the reviewer
    does not re-raise a settled question or a different wording of an open one.
-3. `[Ledger]`: current `MEMENTO.md`.
+3. `[Ledger]`: current `LEDGER.md`.
 4. `[Model Files]`: every file matching `modelFiles` (minus `ignore`), with
    1-based line numbers, capped at 120k characters (largest files truncated
    last; truncation noted).
@@ -205,9 +205,9 @@ unchanged; nothing is sent in the user's voice.
 | idle, nothing to report | no-op |
 
 Steer templates (code constants):
-- missing line: `Ledger check: end the turn with a "Ledger:" line stating what changed in MEMENTO.md, or "Ledger: unchanged".`
-- claimed/no change: `Ledger check: your Ledger line reports a change but MEMENTO.md is unchanged. Make the edit or correct the line.`
-- changed/unclaimed: `Ledger check: MEMENTO.md changed this turn but the Ledger line says unchanged. State what changed.`
+- missing line: `Ledger check: end the turn with a "Ledger:" line stating what changed in LEDGER.md, or "Ledger: unchanged".`
+- claimed/no change: `Ledger check: your Ledger line reports a change but LEDGER.md is unchanged. Make the edit or correct the line.`
+- changed/unclaimed: `Ledger check: LEDGER.md changed this turn but the Ledger line says unchanged. State what changed.`
 
 ### 5.5 State and persistence
 
@@ -267,7 +267,7 @@ live run that removed the register (4), the run recorder (3) and turnModel (7). 
 
 ## 8. Acceptance tests
 
-Fixture: a small R or Stan project with a `MODEL_SPEC.md`, `MEMENTO.md`, and
+Fixture: a small R or Stan project with a `MODEL_SPEC.md`, `LEDGER.md`, and
 model files. Seeded failures, each in its own fixture variant:
 
 1. A density-dependent copy of a frequency-dependent force of infection in a

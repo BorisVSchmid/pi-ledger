@@ -50,7 +50,7 @@ describe('statusLine', () => {
   };
 
   it('summarises acceptance, flags and ledger state', () => {
-    expect(statusLine({ ledgerText: LEDGER, ledgerName: 'MEMENTO.md', state: state() })).toBe(
+    expect(statusLine({ ledgerText: LEDGER, ledgerName: 'LEDGER.md', state: state() })).toBe(
       'Acceptance 1/3 passed, 1 failed · 2 open flags · ledger current'
     );
   });
@@ -59,16 +59,16 @@ describe('statusLine', () => {
     const s = state();
     s.lastTurnFindings = ['LEDGER_LINE_MISSING'];
     expect(
-      statusLine({ ledgerText: LEDGER, ledgerName: 'MEMENTO.md', state: s, reviewing: true })
+      statusLine({ ledgerText: LEDGER, ledgerName: 'LEDGER.md', state: s, reviewing: true })
     ).toBe('Acceptance 1/3 passed, 1 failed · 2 open flags · ledger behind · reviewing…');
   });
 
   it('handles a missing ledger and an unchecked one', () => {
     const s = emptyLedgerState();
-    expect(statusLine({ ledgerText: null, ledgerName: 'MEMENTO.md', state: s })).toBe(
-      'no Acceptance · 0 open flags · no MEMENTO.md'
+    expect(statusLine({ ledgerText: null, ledgerName: 'LEDGER.md', state: s })).toBe(
+      'no Acceptance · 0 open flags · no LEDGER.md'
     );
-    expect(statusLine({ ledgerText: LEDGER, ledgerName: 'MEMENTO.md', state: s })).toMatch(
+    expect(statusLine({ ledgerText: LEDGER, ledgerName: 'LEDGER.md', state: s })).toMatch(
       /ledger not checked yet$/
     );
   });
