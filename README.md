@@ -59,15 +59,15 @@ pi-ledger is untested.
 
 ## Commands
 
-| Command                       |                                                                         |
-| ----------------------------- | ----------------------------------------------------------------------- |
-| `/ledger` or `/ledger status` | status line plus each Acceptance item                                   |
-| `/ledger on` / `/ledger off`  | switch on or off for this session (remembered across reloads)           |
-| `/ledger metrics`             | counters                                                                |
-| `/review [note]`              | review the model now                                                    |
-| `/flag`                       | list open questions                                                     |
-| `/flag <id> close <reason>`   | answered (deliberate, fixed, or not an issue); never raised again       |
-| `/flag <id> send`             | send a templated question to the agent (the only way a flag reaches it) |
+| Command                       |                                                                                              |
+| ----------------------------- | -------------------------------------------------------------------------------------------- |
+| `/ledger` or `/ledger status` | status line plus each Acceptance item                                                        |
+| `/ledger on` / `/ledger off`  | switch on or off for this session (remembered across reloads)                                |
+| `/ledger metrics`             | counters                                                                                     |
+| `/review [note]`              | review the model now                                                                         |
+| `/flag`                       | list open questions                                                                          |
+| `/flag <id> close <reason>`   | answered (`intended`, `not-an-issue`, `fixed`, `dup F<n>` or your words); never raised again |
+| `/flag <id> send`             | send a templated question to the agent (the only way a flag reaches it)                      |
 
 ## What it checks
 

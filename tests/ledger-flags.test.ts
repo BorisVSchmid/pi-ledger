@@ -333,6 +333,54 @@ describe('runtime', () => {
     expect('register' in rt.state()).toBe(false);
   });
 
+  it('asks for a reason when none is given, and a cancel closes nothing', async () => {
+    h = harness();
+    h.replies.push(reply([fixtureFlag('First?')]));
+    await h.rt.review(h.ctx, h.config, 'command');
+    h.ctx.hasUI = true;
+    h.ctx.ui.input = vi.fn(async () => undefined);
+    expect(await h.rt.flagCommand('F1 close', h.ctx)).toMatch(/not closed/);
+    expect(h.rt.state().flags.flags[0].status).toBe('open');
+    h.ctx.ui.input = vi.fn(async () => ' fixed  in fit.R ');
+    expect(await h.rt.flagCommand('F1 close', h.ctx)).toMatch(/closed \(fixed: in fit\.R\)/);
+    expect(h.ctx.ui.input.mock.calls[0][0]).toMatch(/^Why close F1\? \(First\?\)/);
+  });
+
+  it('adds a labelled model interpretation to a terse reason, kept apart from it', async () => {
+    h = harness();
+    h.replies.push(reply([fixtureFlag('First?'), { ...fixtureFlag('Second?'), concept: 'P2 X' }]));
+    await h.rt.review(h.ctx, h.config, 'command');
+    const said = 'Frequency dependence is the deliberate choice for this host.';
+    h.replies.push({ ok: true, json: { interpretation: said }, model: null } as never);
+    await h.rt.flagCommand('F1 close intended', h.ctx, h.config);
+    await h.rt.pendingInterpretation;
+    const [f1, f2] = h.rt.state().flags.flags;
+    expect(f1).toMatchObject({ reason: 'intended (a deliberate choice)', interpretation: said });
+    const call = (h.rt.callModel as any).mock.calls.at(-1)[1];
+    expect(call.systemPrompt).toMatch(/one sentence/);
+    expect(call.userPrompt).toMatch(/\[Human's reason for closing\]\nintended/);
+    expect(renderFlag(f1).join('\n')).toMatch(/Your note: intended.*\n {2}\(interpretation: Freq/);
+    expect(flagsForPrompt(h.rt.state().flags)).toMatch(
+      /"reason": "intended \(a deliberate choice\)",\n {2}"interpretation_by_model": "Freq/
+    );
+    expect(h.ctx.ui.notify.mock.calls.at(-1)[0]).toMatch(/^F1 \(interpretation: Freq/);
+
+    // Re-closing replaces the reason and drops the old interpretation.
+    h.replies.push({ ok: false, error: 'boom', model: null } as never);
+    await h.rt.flagCommand('F1 close not-an-issue', h.ctx, h.config);
+    await h.rt.pendingInterpretation;
+    expect(f1.reason).toBe('not an issue');
+    expect(f1.interpretation).toBeUndefined();
+
+    // A long reason speaks for itself: no model call.
+    const calls = (h.rt.callModel as any).mock.calls.length;
+    const long = 'the range is the prior from the 2019 trapping data and not a fitted value at all';
+    await h.rt.flagCommand(`F2 close ${long}`, h.ctx, h.config);
+    expect(h.rt.pendingInterpretation).toBeNull();
+    expect((h.rt.callModel as any).mock.calls.length).toBe(calls);
+    expect(f2.reason).toBe(long);
+  });
+
   it('loads flags closed earlier without a reason', () => {
     h = harness();
     const old = new LedgerRuntime(h.pi);

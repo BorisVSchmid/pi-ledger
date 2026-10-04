@@ -36,15 +36,24 @@ commands). Defaults taken without asking:
   trigger another one because a turn without edits never reviews.
 - **`/flag <id> close <reason>`** replaces `intended` and `dismiss`, which were the same action.
   The old words are gone as verbs. Statuses are `open`, `sent`, `closed`.
-- **A close reason is required** (Boris, 2026-10-04). `/flag F3 close` alone is refused with a
-  one-line hint. Presets keep it to one word: `intended`, `not-an-issue`, `fixed`, `dup F<n>`
-  (must name another flag), each optionally followed by more words; anything else is free text.
-  Closed flags go to the reviewer as the human's answer, so the reason is what stops the same
-  doubt coming back in other words. **No model-suggested reason**, on purpose: the reviewer
-  reads closed reasons as the human's verdict, and a model-written one would put the model's
-  judgement in the human's voice and could be accepted with a keypress without being read. The
-  cost is a few keystrokes per close. Flags closed earlier without a reason (and register
-  flags that were `intended`/`dismissed`) still load; they simply show no note.
+- **A close reason is required** (Boris, 2026-10-04). `/flag F3 close` alone asks for one in a
+  text prompt (in RPC/print mode, without a UI, it is refused with a one-line hint); a cancelled
+  or empty prompt closes nothing. Presets keep it to one word: `intended`, `not-an-issue`,
+  `fixed`, `dup F<n>` (must name another flag), each optionally followed by more words; anything
+  else is free text. Closed flags go to the reviewer as the human's answer, so the reason is what
+  stops the same doubt coming back in other words.
+- **Model interpretation of terse reasons** (Boris, 2026-10-04). After a close with a reason of
+  12 words or fewer, the reviewer model writes one sentence on what the reason means for that
+  flag (`CLOSE_INTERPRETATION_PROMPT`, overridable as `.pi/CLOSE_INTERPRETATION.md`). It runs in
+  the background, is stored as `interpretation` beside `reason` (never merged into it), shows as
+  `(interpretation: …)` under "Your note" and in a notice, and reaches the reviewer as
+  `interpretation_by_model`, with the prompt saying the human's reason wins where they differ.
+  The earlier worry (a model's judgement passing as the human's verdict) is met by this
+  labelling; the remaining risk is that a wrong interpretation is not noticed, so the notice
+  says to re-close with your own words, which replaces the reason and drops the interpretation.
+  A failed call leaves the reason alone (`flag.interpretation_failed`). Longer reasons are
+  not interpreted. Flags closed earlier without a reason (and register flags that were
+  `intended`/`dismissed`) still load; they simply show no note.
 - **Compaction note reworded**: it lists summary statements that _differ_ from the ledger and
   says to check which is current, since the ledger can be behind. The prompt's key is
   `differs`; replies under the old `stale` key are still accepted.

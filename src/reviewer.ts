@@ -315,7 +315,10 @@ inconsistencies with evidence, as questions for the human.
 You receive, in this order:
   [Model Spec]      the human's statement of each concept (may be absent).
   [Flags]           questions already raised: open (waiting for the human)
-                    and closed (the human answered them).
+                    and closed (the human answered them). A closed flag's
+                    "reason" is the human's own words; its
+                    "interpretation_by_model" is another model's reading of
+                    them. Where they differ, the reason wins.
   [Ledger]          MEMENTO.md: Assumptions, Decisions, Checks, Observed,
                     Crossed out.
   [Model Files]     the current source of the model files, with line numbers.
@@ -388,6 +391,15 @@ Conceptual (each part fine alone; together they encode two models):
   ],
   "restatement": "at most ten lines"
 }`;
+
+export const CLOSE_INTERPRETATION_PROMPT = `A human closed a question about a research model with a short reason.
+Write one sentence saying what that reason most plausibly means for this
+question, so a later reviewer reading only the flag understands the answer.
+Stay within what the reason says: do not add facts, numbers, fixes or
+judgements of your own, and do not say whether the human is right. If the
+reason is too short to read more into, restate it plainly.
+Reply with JSON only: {"interpretation": "<one sentence>"}
+`;
 
 export const COMPACTION_NOTE_PROMPT = `You check a conversation summary against a research ledger. The summary was
 written when an agent's context was compacted; the agent will rely on it from

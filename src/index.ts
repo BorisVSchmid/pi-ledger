@@ -180,7 +180,7 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand('flag', {
     description: 'List flags, or /flag <id> close <reason> | send',
     handler: async (args, ctx) => {
-      ctx.ui.notify(await ledger.flagCommand(args ?? '', ctx), 'info');
+      ctx.ui.notify(await ledger.flagCommand(args ?? '', ctx, config), 'info');
       await refreshStatus(ctx);
     },
   });

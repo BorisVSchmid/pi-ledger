@@ -25,6 +25,9 @@ import {
   addFlag,
   closeFlag,
   closeReason,
+  coerceInterpretation,
+  interpretationPrompt,
+  needsInterpretation,
   emptyFlags,
   findFlag,
   migrateRegister,
@@ -37,6 +40,7 @@ import {
 import { callJson } from './model-session.js';
 import {
   buildReviewerPrompt,
+  CLOSE_INTERPRETATION_PROMPT,
   coerceDiffItems,
   coerceReviewerOutput,
   COMPACTION_NOTE_PROMPT,
@@ -161,6 +165,8 @@ export async function readTextOrNull(file: string): Promise<string | null> {
 }
 
 /** A project may override a built-in prompt with .pi/<name>. */
+const oneLineQuestion = (f: Flag) => f.question.replace(/\s+/g, ' ').trim();
+
 async function loadPrompt(cwd: string, name: string, builtin: string): Promise<string> {
   return (await readTextOrNull(path.join(cwd, '.pi', name)))?.trim() || builtin;
 }
@@ -460,7 +466,7 @@ export class LedgerRuntime {
   // ---------- /flag ----------
 
   /** /flag · /flag <id> · /flag <id> close <reason> · /flag <id> send. Returns the text to show. */
-  async flagCommand(args: string, ctx: ExtensionContext): Promise<string> {
+  async flagCommand(args: string, ctx: ExtensionContext, config?: LedgerConfig): Promise<string> {
     const usage = 'Usage: /flag (list) · /flag <id> · /flag <id> close <reason> · /flag <id> send';
     const store = this.s.flags;
     const [id, action, ...rest] = args.trim().split(/\s+/).filter(Boolean);
@@ -477,9 +483,19 @@ export class LedgerRuntime {
     if (verb !== 'close' && verb !== 'send') return usage;
 
     if (verb === 'close') {
-      const r = closeReason(store, flag, rest);
+      let words = rest;
+      if (words.length === 0 && ctx.hasUI) {
+        const typed = await ctx.ui.input(
+          `Why close ${flag.id}? (${oneLineQuestion(flag)})`,
+          'intended | not-an-issue | fixed | dup F<n> | your own words'
+        );
+        words = (typed ?? '').trim().split(/\s+/).filter(Boolean);
+        if (words.length === 0) return `${flag.id} not closed: no reason given.`;
+      }
+      const r = closeReason(store, flag, words);
       if ('error' in r) return r.error;
       closeFlag(store, flag, r.reason);
+      if (config && needsInterpretation(r.reason)) this.startInterpretation(ctx, config, flag);
     } else flag.status = 'sent';
     bump(this.s, `flag.${verb}`);
     this.persist();
@@ -489,6 +505,51 @@ export class LedgerRuntime {
       return `${flag.id} sent to the agent.`;
     }
     return `${flag.id} closed (${flag.reason}); the same evidence will not be raised again.`;
+  }
+
+  /** Pending close-reason interpretation, if any (exposed for tests). */
+  pendingInterpretation: Promise<unknown> | null = null;
+
+  /**
+   * After a terse close: a model writes one sentence on what the reason means,
+   * stored apart from the reason and labelled as the model's in FLAGS.md and
+   * in the reviewer prompt. Runs in the background; a failure leaves the
+   * reason alone.
+   */
+  startInterpretation(ctx: ExtensionContext, config: LedgerConfig, flag: Flag): void {
+    const reason = flag.reason;
+    const run = async () => {
+      const result = await this.callModel(ctx, {
+        model: config.reviewer.model,
+        fallbackModel: config.reviewer.fallbackModel,
+        systemPrompt: await loadPrompt(
+          ctx.cwd,
+          'CLOSE_INTERPRETATION.md',
+          CLOSE_INTERPRETATION_PROMPT
+        ),
+        userPrompt: interpretationPrompt(flag),
+      });
+      const text = result.ok ? coerceInterpretation(result.json) : undefined;
+      // The human may have re-closed with another reason meanwhile.
+      if (!text || flag.reason !== reason || flag.status !== 'closed') {
+        bump(this.s, 'flag.interpretation_failed');
+        this.persist();
+        return;
+      }
+      flag.interpretation = text;
+      bump(this.s, 'flag.interpretation');
+      this.persist();
+      await this.writeFlags(ctx);
+      ctx.ui.notify(
+        `${flag.id} (interpretation: ${text}) Re-close with your own words if this is wrong.`,
+        'info'
+      );
+    };
+    this.pendingInterpretation = run()
+      .catch(() => bump(this.s, 'flag.interpretation_failed'))
+      .finally(() => {
+        this.pendingInterpretation = null;
+      });
   }
 
   metricsText(): string {
