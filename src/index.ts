@@ -28,6 +28,14 @@ import { detectMidRunSignals } from './state/mid-run-signals.js';
 import { registerFabricProvider } from './fabric-provider.js';
 import { createInitialState, type WidgetState } from './ui/types.js';
 import {
+  defaultConfig,
+  isLedgerMode,
+  loadLedgerConfig,
+  type LedgerConfig,
+} from './ledger/config.js';
+import { LedgerRuntime } from './ledger/runtime.js';
+import { flagCommand, metricsText, registerText } from './ledger/commands.js';
+import {
   extractMessages,
   buildCompactionSummary,
   formatForSupervisor,
@@ -75,11 +83,19 @@ function hasUserMessages(ctx: ExtensionContext): boolean {
   return false;
 }
 
+const LEDGER_NO_GOAL =
+  'Ledger mode: the supervisor flags ledger drift and model inconsistencies; it does not supervise toward a goal. ' +
+  'Use /review, /flag, /supervise register or /supervise metrics.';
+
 export default function (pi: ExtensionAPI) {
   const state = new SupervisorStateManager(pi);
   const widgetState = createInitialState();
   let currentCtx: ExtensionContext | undefined;
   let userInputEpoch = 0;
+  // Ledger mode is opt-in via .pi/supervisor-config.json ("mode": "ledger").
+  // Every ledger-mode behaviour is gated on this; goal mode is unchanged.
+  let ledgerConfig: LedgerConfig = defaultConfig();
+  const ledger = new LedgerRuntime(pi);
 
   pi.on('input', (event) => {
     if (event.source === 'interactive' || event.source === 'rpc') {
@@ -90,10 +106,19 @@ export default function (pi: ExtensionAPI) {
     userInputEpoch++;
   });
 
+  // ---- Ledger mode: turn baseline and run log ----
+  pi.on('before_agent_start', async (_event, ctx) => {
+    if (isLedgerMode(ledgerConfig)) await ledger.onAgentStart(ctx, ledgerConfig);
+  });
+  pi.on('tool_call', async (event, ctx) => {
+    if (isLedgerMode(ledgerConfig)) await ledger.onToolCall(event, ctx, ledgerConfig);
+  });
+
   const startSupervisionFromModel = async (
     outcome: string,
     ctx: ExtensionContext
   ): Promise<string> => {
+    if (isLedgerMode(ledgerConfig)) return LEDGER_NO_GOAL;
     if (state.isActive()) {
       const activeState = state.getState()!;
       return (
@@ -131,6 +156,12 @@ export default function (pi: ExtensionAPI) {
 
   const onSessionLoad = (ctx: ExtensionContext) => {
     currentCtx = ctx;
+    ledgerConfig = loadLedgerConfig(ctx.cwd);
+    if (isLedgerMode(ledgerConfig)) {
+      ledger.load(ctx);
+      ctx.ui.notify('Supervisor: ledger mode', 'info');
+      void ledger.seedFromSpec(ctx, ledgerConfig);
+    }
     state.loadFromSession(ctx);
 
     if (state.isActive() && ctx.isIdle()) {
@@ -154,11 +185,21 @@ export default function (pi: ExtensionAPI) {
     if (state.isActive()) {
       state.persist();
     }
+    // Ledger mode: review the model before context is lost. Runs in the
+    // background on artefacts only, so compaction is not delayed.
+    if (isLedgerMode(ledgerConfig) && ledgerConfig.reviewer.triggers.beforeCompaction) {
+      ledger.startReview(ctx, ledgerConfig, 'before_compaction');
+    }
   });
 
   // ---- After compaction: reload state and continue if agent is working ----
   pi.on('session_compact', async (event, ctx) => {
     currentCtx = ctx;
+    // Ledger mode: the summary stays as written; a separate supervisor note
+    // flags statements in it that the ledger has since crossed out or contradicted.
+    if (isLedgerMode(ledgerConfig) && ledgerConfig.compaction.annotateSummaries) {
+      ledger.startCompactionNote(ctx, ledgerConfig, event.compactionEntry.summary);
+    }
     state.loadFromSession(ctx);
 
     if (!state.isActive()) {
@@ -200,6 +241,8 @@ export default function (pi: ExtensionAPI) {
 
   pi.on('turn_end', async (_event, ctx) => {
     currentCtx = ctx;
+    // Ledger mode: no mid-run model analysis.
+    if (isLedgerMode(ledgerConfig)) return;
     if (!state.isActive()) return;
 
     const messages = extractMessages(ctx);
@@ -231,6 +274,16 @@ export default function (pi: ExtensionAPI) {
 
   pi.on('agent_settled', async (_event, ctx) => {
     currentCtx = ctx;
+    if (isLedgerMode(ledgerConfig)) {
+      try {
+        await ledger.onSettled(ctx, ledgerConfig);
+      } catch (err) {
+        ctx.ui.notify(`Supervisor: ledger monitor failed (${String(err)})`, 'warning');
+      }
+      // Ledger mode never runs the goal analysis: no done, no reframe escalation,
+      // and nothing happens at idle beyond the monitor.
+      return;
+    }
     if (!state.isActive()) return;
     const inputEpochAtStart = userInputEpoch;
 
@@ -335,6 +388,12 @@ export default function (pi: ExtensionAPI) {
         { value: 'model', label: 'model', description: 'Pick the supervisor model' },
         { value: 'stop', label: 'stop', description: 'Stop active supervision' },
         { value: 'widget', label: 'widget', description: 'Toggle the status widget' },
+        ...(isLedgerMode(ledgerConfig)
+          ? [
+              { value: 'register', label: 'register', description: 'Show the model register' },
+              { value: 'metrics', label: 'metrics', description: 'Show ledger-mode metrics' },
+            ]
+          : []),
       ];
       const matches = subcommands.filter((s) => s.value.startsWith(prefix));
       return matches.length > 0 ? matches : null;
@@ -342,6 +401,13 @@ export default function (pi: ExtensionAPI) {
     handler: async (args, ctx) => {
       currentCtx = ctx;
       const trimmed = args?.trim() ?? '';
+
+      // --- ledger-mode subcommands ---
+
+      if (isLedgerMode(ledgerConfig) && (trimmed === 'register' || trimmed === 'metrics')) {
+        ctx.ui.notify(trimmed === 'register' ? registerText(ledger) : metricsText(ledger), 'info');
+        return;
+      }
 
       // --- subcommands ---
 
@@ -399,6 +465,11 @@ export default function (pi: ExtensionAPI) {
           `Supervisor model set to ${picked.provider}/${picked.id} (saved to ${configPath}).`,
           'info'
         );
+        return;
+      }
+
+      if (isLedgerMode(ledgerConfig)) {
+        ctx.ui.notify(LEDGER_NO_GOAL, 'info');
         return;
       }
 
@@ -503,6 +574,39 @@ export default function (pi: ExtensionAPI) {
       }
 
       ctx.ui.notify(`Supervisor active: "${truncateForNotify(trimmed, 25)}"`, 'info');
+    },
+  });
+
+  // ---- /review: ask for a review now (ledger mode) ----
+
+  pi.registerCommand('review', {
+    description: 'Ledger mode: review the model now (/review [note for the reviewer])',
+    handler: async (args, ctx) => {
+      if (!isLedgerMode(ledgerConfig)) {
+        ctx.ui.notify('/review is only available in ledger mode.', 'warning');
+        return;
+      }
+      if (!ledgerConfig.reviewer.triggers.onCommand) {
+        ctx.ui.notify('/review is disabled in supervisor-config.json.', 'warning');
+        return;
+      }
+      const note = args?.trim() || undefined;
+      if (!ledger.startReview(ctx, ledgerConfig, 'command', note)) {
+        ctx.ui.notify('A review is already running.', 'info');
+      }
+    },
+  });
+
+  // ---- /flag: answer reviewer flags (ledger mode) ----
+
+  pi.registerCommand('flag', {
+    description: 'Ledger mode: list flags, or /flag <id> intended|dismiss|send [reason]',
+    handler: async (args, ctx) => {
+      if (!isLedgerMode(ledgerConfig)) {
+        ctx.ui.notify('/flag is only available in ledger mode.', 'warning');
+        return;
+      }
+      ctx.ui.notify(await flagCommand(args ?? '', ctx, pi, ledger, ledgerConfig), 'info');
     },
   });
 

@@ -11,10 +11,13 @@ import {
 } from '@earendil-works/pi-coding-agent';
 import type { ExtensionContext } from '@earendil-works/pi-coding-agent';
 
+type ThinkingLevel = NonNullable<ExtensionContext['thinkingLevel']>;
+
 export class SupervisorSession {
   private session: Awaited<ReturnType<typeof createAgentSession>>['session'] | null = null;
   private model: any = null;
   private systemPrompt: string = '';
+  private thinkingLevel: ThinkingLevel | undefined = undefined;
   private parentRegistry: ExtensionContext['modelRegistry'] | null = null;
   private cwd: string | null = null;
 
@@ -22,7 +25,8 @@ export class SupervisorSession {
     ctx: ExtensionContext,
     provider: string,
     modelId: string,
-    systemPrompt: string
+    systemPrompt: string,
+    thinkingLevel?: ThinkingLevel
   ): Promise<boolean> {
     // If model or system prompt changed, need new session
     const newModel = ctx.modelRegistry.find(provider, modelId);
@@ -32,6 +36,7 @@ export class SupervisorSession {
       this.session &&
       this.model === newModel &&
       this.systemPrompt === systemPrompt &&
+      this.thinkingLevel === thinkingLevel &&
       this.parentRegistry === ctx.modelRegistry &&
       this.cwd === ctx.cwd
     ) {
@@ -93,10 +98,12 @@ export class SupervisorSession {
         model: newModel,
         tools: [],
         resourceLoader: loader,
+        ...(thinkingLevel ? { thinkingLevel } : {}),
       });
       this.session = result.session;
       this.model = newModel;
       this.systemPrompt = systemPrompt;
+      this.thinkingLevel = thinkingLevel;
       this.parentRegistry = ctx.modelRegistry;
       this.cwd = ctx.cwd;
       return true;

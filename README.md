@@ -117,12 +117,12 @@ The thinking text streams naturally into multiple lines. When supervision ends o
 
 **Analysis triggers:**
 
-| When                          | Why                                              |
-| ----------------------------- | ------------------------------------------------ |
-| Agent goes idle (`agent_end`) | Critical decision point — must choose done/steer |
-| After we steered              | Verify the steer worked                          |
-| Mid-run safety valve          | Catch runaway drift during long runs             |
-| Tool errors detected          | If agent hits an error, we check                 |
+| When                              | Why                                              |
+| --------------------------------- | ------------------------------------------------ |
+| Agent goes idle (`agent_settled`) | Critical decision point — must choose done/steer |
+| After we steered                  | Verify the steer worked                          |
+| Mid-run safety valve              | Catch runaway drift during long runs             |
+| Tool errors detected              | If agent hits an error, we check                 |
 
 The supervisor only intervenes when it has high confidence the agent is off track. It trusts the agent to make progress and only steps in when necessary.
 
@@ -285,6 +285,68 @@ Response schema (strict JSON, required):
 }
 ```
 
+## Ledger mode
+
+An opt-in mode for long exploratory research sessions. Instead of steering toward a goal, the
+supervisor checks that the research ledger (`MEMENTO.md`) keeps up with the work and that the
+model stays coherent, and puts what it finds to you as questions. It never pushes the agent to
+finish, narrow or change course, never runs anything, and never reads reasoning or tool output.
+
+Enable it in `.pi/supervisor-config.json` (or `~/.pi/agent/supervisor-config.json`):
+
+```json
+{ "mode": "ledger", "reviewer": { "model": "provider/model-id" } }
+```
+
+See [`examples/ledger-mode/`](examples/ledger-mode/) for the config, `MEMENTO.md` and
+`MODEL_SPEC.md` templates and an `AGENTS.md` snippet.
+
+**Every turn (code only, no model call).** After the agent settles, the monitor checks:
+
+| Check                                            | Finding                                                | Action                          |
+| ------------------------------------------------ | ------------------------------------------------------ | ------------------------------- |
+| D1 reply ends with a `Ledger:` line              | `LEDGER_LINE_MISSING`                                  | templated steer, never repeated |
+| D2 the line matches whether `MEMENTO.md` changed | `LEDGER_CLAIMED_NO_CHANGE`, `LEDGER_CHANGED_UNCLAIMED` | templated steer, never repeated |
+| D3 `Acceptance` and `Checks` are append-only     | `LOCKED_SECTION_EDITED`                                | notice                          |
+| D4 model files changed                           | snapshot diff with line ranges                         | kept for the reviewer           |
+| D5 language drift                                | `LANGUAGE_DRIFT`                                       | notice                          |
+| text addressed to the supervisor                 | `INJECTION`                                            | notice                          |
+
+Matching shell commands (`monitor.runCommands`) are logged to `.pi/runs.jsonl`.
+
+**Sparse review (a capable model, fresh context each time).** Triggered when model edits touch a
+tagged concept (`# @concept P1`), when the ledger's `## Next` or `## Checks` changes, before
+compaction, after N turns with unreviewed edits, or by `/review [note]`. The reviewer sees only
+artefacts: `MODEL_SPEC.md`, the model register, `MEMENTO.md`, the model files with line numbers,
+the edits since the last review, and the agent's latest description of the model labelled as a
+claim. It looks for two places encoding two ideas of the same thing (density- vs
+frequency-dependent transmission, an external hazard plus an external compartment, per-week rates
+in a per-day model, seasonality in two layers, and so on). Every quote and location is checked in
+code; findings that do not verify are dropped. Prefer a reviewer from a different model family
+than the working agent.
+
+**After compaction.** The reviewer model reads the new summary with `MEMENTO.md` and
+`MODEL_SPEC.md` only, and if the summary repeats something the ledger has crossed out or
+contradicted, a separate supervisor note listing those statements is added after it. The summary
+itself is not changed. Turn off with `compaction.annotateSummaries: false`.
+
+**Outputs.** `.pi/FLAGS.md` (open questions, the reviewer's ten-line restatement of the model to
+compare with what you meant, notices) and `.pi/model-register.md` (each concept, its stated
+meaning and everywhere it is realised).
+
+| Command                                      |                                                                         |
+| -------------------------------------------- | ----------------------------------------------------------------------- |
+| `/flag`                                      | list open questions                                                     |
+| `/flag <id> intended [reason]`               | deliberate; never raised again for the same evidence                    |
+| `/flag <id> dismiss [reason]`                | not an issue                                                            |
+| `/flag <id> send`                            | send a templated question to the agent (the only way a flag reaches it) |
+| `/review [note]`                             | review now                                                              |
+| `/supervise register` / `/supervise metrics` | show the register / counters                                            |
+
+Optional: set `turnModel` to a cheap model for a per-turn check of unrecorded claims and
+unsupported results (notices only). In ledger mode the goal supervisor, `done`, reframe
+escalation and mid-run analysis are off; goal mode is unchanged.
+
 ## Session Persistence
 
 Supervision state (outcome, model, intervention history) is stored in the pi session file and restored automatically on restart, session switch, fork, and tree navigation.
@@ -338,6 +400,16 @@ src/
     model-settings-selector.ts # Copied pi-core ModelSelectorComponent for the supervisor
     model-sort.ts        # pi-model-sort last-used integration
   global-config.ts      # .pi/supervisor-config.json read/write
+  ledger/               # Ledger mode (opt-in)
+    config.ts           # Ledger-mode config and mode switch
+    checks.ts           # D1–D5 checks, snapshots and line diffs, quote verification
+    monitor.ts          # Per-turn evaluation and steer/notice routing
+    register.ts         # Concept-level model register and flag lifecycle
+    reviewer.ts         # Reviewer input, output verification, triggers, compaction note
+    model-call.ts       # Fresh-session model calls with fallback
+    runtime.ts          # Hook glue: baselines, run log, reviews, FLAGS.md
+    commands.ts         # /flag, /supervise register|metrics
+    prompts.ts          # Reviewer, turn-check and compaction-note prompts
 ```
 
 ## License
