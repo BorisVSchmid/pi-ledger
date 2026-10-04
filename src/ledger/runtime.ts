@@ -260,7 +260,7 @@ export class LedgerRuntime {
       const key = `${n.kind}:${hashText(n.detail)}:${ledgerHash ?? 'none'}`;
       if (addNotice(state, { ...n, turn: state.turn, ts: Date.now() }, key)) {
         newNotices++;
-        ctx.ui.notify(`Supervisor: ${n.kind} — ${n.detail}`, 'warning');
+        ctx.ui.notify(`Ledger: ${n.kind} — ${n.detail}`, 'warning');
       }
     }
 
@@ -301,7 +301,7 @@ export class LedgerRuntime {
         turnDiff: modelDiff,
       };
       this.pendingTurn = this.turnCheck(ctx, config, input)
-        .catch((err) => ctx.ui.notify(`Supervisor: turn check failed (${String(err)})`, 'warning'))
+        .catch((err) => ctx.ui.notify(`Ledger: turn check failed (${String(err)})`, 'warning'))
         .finally(() => {
           this.pendingTurn = null;
         });
@@ -339,7 +339,7 @@ export class LedgerRuntime {
       ) {
         added++;
         bump(state, 'finding.TURN_FINDING');
-        ctx.ui.notify(`Supervisor: ${detail}`, 'warning');
+        ctx.ui.notify(`Ledger: ${detail}`, 'warning');
       }
     }
     this.store.persist();
@@ -366,7 +366,7 @@ export class LedgerRuntime {
   ): boolean {
     if (this.pending) return false;
     this.pending = this.review(ctx, config, reason, note)
-      .catch((err) => ctx.ui.notify(`Supervisor: review failed (${String(err)})`, 'warning'))
+      .catch((err) => ctx.ui.notify(`Ledger: review failed (${String(err)})`, 'warning'))
       .finally(() => {
         this.pending = null;
       });
@@ -408,7 +408,7 @@ export class LedgerRuntime {
       inputs: config.reviewer.inputs,
     });
 
-    ctx.ui.notify(`Supervisor: reviewing the model (${reason})…`, 'info');
+    ctx.ui.notify(`Ledger: reviewing the model (${reason})…`, 'info');
     bump(state, `review.${reason}`);
     const result = await this.callModel(ctx, {
       model: config.reviewer.model,
@@ -422,7 +422,7 @@ export class LedgerRuntime {
       bump(state, 'review.failed');
       this.store.persist();
       ctx.ui.notify(
-        `Supervisor: review produced nothing usable (${result.ok ? 'unexpected JSON' : result.error}).`,
+        `Ledger: review produced nothing usable (${result.ok ? 'unexpected JSON' : result.error}).`,
         'warning'
       );
       return;
@@ -472,9 +472,7 @@ export class LedgerRuntime {
   /** After compaction: check the summary against the ledger and add a note if anything is stale. */
   startCompactionNote(ctx: ExtensionContext, config: LedgerConfig, summary: string): void {
     this.pendingNote = this.compactionNote(ctx, config, summary)
-      .catch((err) =>
-        ctx.ui.notify(`Supervisor: compaction check failed (${String(err)})`, 'warning')
-      )
+      .catch((err) => ctx.ui.notify(`Ledger: compaction check failed (${String(err)})`, 'warning'))
       .finally(() => {
         this.pendingNote = null;
       });
@@ -526,7 +524,7 @@ export class LedgerRuntime {
       details: { items: kept },
     });
     ctx.ui.notify(
-      `Supervisor: ${kept.length} stale item(s) noted after the compaction summary.`,
+      `Ledger: ${kept.length} stale item(s) noted after the compaction summary.`,
       'info'
     );
   }
@@ -554,7 +552,7 @@ export class LedgerRuntime {
     if (spec !== null) {
       const renames = this.applySpec(spec);
       for (const [from, to] of renames)
-        ctx.ui.notify(`Supervisor: concept "${from}" renamed to "${to}" (MODEL_SPEC.md).`, 'info');
+        ctx.ui.notify(`Ledger: concept "${from}" renamed to "${to}" (MODEL_SPEC.md).`, 'info');
       await this.exportRegister(ctx, config);
       if (renames.length) await this.writeFlags(ctx, config);
     }
@@ -585,7 +583,7 @@ export class LedgerRuntime {
       await fs.mkdir(path.dirname(file), { recursive: true });
       await fs.writeFile(file, text, 'utf8');
     } catch {
-      ctx.ui.notify(`Supervisor: could not write ${rel}`, 'warning');
+      ctx.ui.notify(`Ledger: could not write ${rel}`, 'warning');
     }
   }
 

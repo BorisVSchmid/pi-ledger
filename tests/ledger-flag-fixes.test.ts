@@ -213,12 +213,12 @@ describe('review notice digest', () => {
       1
     );
     expect(text).toMatch(
-      /^Supervisor review: 2 new question\(s\), 3 repeat\(s\) of open flags, 1 dropped/
+      /^Ledger review: 2 new question\(s\), 3 repeat\(s\) of open flags, 1 dropped/
     );
     expect(text).toMatch(/F7 · P3 Predation: Is the Holling II response deliberate\?/);
     expect(text).toMatch(/…and 1 more/);
     expect(text).toMatch(/raised again: F1, F2/);
-    expect(reviewNotice([], [], 0)).toBe('Supervisor review: 0 new question(s)');
+    expect(reviewNotice([], [], 0)).toBe('Ledger review: 0 new question(s)');
   });
 });
 

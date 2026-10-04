@@ -273,7 +273,11 @@ export function verifyReview(out: ReviewerOutput, v: VerifyContext): VerifiedRev
 // ---------- triggers ----------
 
 export type ReviewReason =
-  'command' | 'register_change' | 'breakpoint' | 'before_compaction' | 'backstop';
+  | 'command'
+  | 'register_change'
+  | 'breakpoint'
+  | 'before_compaction'
+  | 'backstop';
 
 export interface TriggerInput {
   turn: number;
@@ -375,7 +379,7 @@ export function reviewNotice(
   maxListed = 3
 ): string {
   const head =
-    `Supervisor review: ${created.length} new question(s)` +
+    `Ledger review: ${created.length} new question(s)` +
     (repeatOf.length ? `, ${repeatOf.length} repeat(s) of open flags` : '') +
     (dropped ? `, ${dropped} dropped (quotes not found)` : '');
   const lines = [head];
@@ -428,7 +432,7 @@ export function verifyStaleItems(
 
 export function renderCompactionNote(items: StaleItem[]): string {
   const lines = [
-    'Supervisor note on the compaction summary above. The summary is unchanged; these statements in it are stale according to the ledger:',
+    'Ledger note on the compaction summary above. The summary is unchanged; these statements in it are stale according to the ledger:',
     '',
   ];
   for (const s of items) {
