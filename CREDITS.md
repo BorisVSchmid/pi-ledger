@@ -37,7 +37,7 @@ project's licence before copying any text or code from it.
   locked sections and the optional anchor re-injection follow this.
 - **lhl/pi-multiloop** — compound verifiers, and keeping work counters out of
   the agent's view so they are not read as a context gauge.
-- **thebabush/pi-memento**, **ttttmr/pi-context**, **pi-rollback** —
+- **thebabush/pi-memento**, **ttttmr/pi-context**, **uriafranko/pi-rollback** —
   agent-driven context transactions and branch summaries. Not in the plugin,
   but they shaped the recommendation to run side explorations as `/tree`
   branches.
@@ -175,32 +175,43 @@ a session, and that extension is not ledger mode.
 
 ## Research whose findings shaped the design
 
-- Zhang et al., *Agentic Context Engineering* (2025): incremental delta
-  updates; monolithic rewrites collapse context → the register and ledger are
-  edited, never regenerated.
-- Laban et al., *LLMs Get Lost in Multi-Turn Conversation* (2025): early
-  assumptions persist; consolidated restarts recover → reset from the ledger.
-- Martin & Roger, *Classifier Context Rot* (2026): monitor recall falls with
-  transcript length; incremental checks, more reasoning and quote-first
-  prompting help → per-turn monitoring, reviewer with extended thinking,
-  quote-first findings.
-- *Agents That Edit Documents* (2026) and Tang et al., *How Coding Agents Fail
-  Their Users* (2026): agents misreport their own edits → the Ledger line is a
-  claim verified against the file hash.
-- *ImpossibleBench* (2025) and related reward-hacking work: isolating tests
-  removes cheating → append-only Acceptance and Checks sections.
-- *Self-Correction Blind Spot* (2026): models catch errors in others' work,
-  not their own → reviewer in a fresh context, artefacts only.
-- Norman, Rivera & Hughes, 21-judge study (2026) and Thakur et al. (2025):
-  judge agreement is weaker than it looks; small judges are worst → code
-  verification of quotes, flags routed to the human, capable reviewer.
-- *When Context Changes* (2026) and *Unable to Forget* (2025): stale values
-  win over updates → superseded claims leave the live ledger.
-- Lu et al., *Hidden Pitfalls of AI Scientist Systems* (2025): post-hoc
-  selection bias → success criteria fixed and locked before fitting.
-- Anthropic, *Harness design for long-running application development*
+- Zhang et al., [*Agentic Context Engineering*](https://arxiv.org/abs/2510.04618)
+  (2025): incremental delta updates; monolithic rewrites collapse context →
+  the register and ledger are edited, never regenerated.
+- Laban et al., [*LLMs Get Lost in Multi-Turn Conversation*](https://arxiv.org/abs/2505.06120)
+  (2025): early assumptions persist; consolidated restarts recover → reset
+  from the ledger.
+- Martin & Roger, [*Classifier Context Rot*](https://arxiv.org/abs/2605.12366)
+  (2026): monitor recall falls with transcript length; incremental checks,
+  more reasoning and quote-first prompting help → per-turn monitoring,
+  reviewer with extended thinking, quote-first findings.
+- Tang et al., [*How Coding Agents Fail Their Users*](https://arxiv.org/abs/2605.29442)
+  (2026), and [*Agents That Edit Documents*](https://arxiv.org/abs/2609.23953)
+  (2026): inaccurate self-reporting grows as sessions go on; agents misreport
+  their own edits → the Ledger line is a claim verified against the file hash.
+- Zhong et al., [*ImpossibleBench*](https://arxiv.org/abs/2510.20270) (2025)
+  and related reward-hacking work: isolating tests removes cheating →
+  append-only Acceptance and Checks sections.
+- Tsui, [*Self-Correction Bench*](https://arxiv.org/abs/2507.02778) (2025),
+  the "self-correction blind spot": models correct an error when it is
+  attributed to someone else, not when it is in their own output → reviewer
+  in a fresh context, artefacts only.
+- Norman, Rivera & Hughes, [*Reliability without Validity*](https://arxiv.org/abs/2606.19544)
+  (2026), a 21-judge study, and Thakur et al.,
+  [*Judging the Judges*](https://arxiv.org/abs/2406.12624) (2025): judge
+  agreement is weaker than it looks; only the strongest judges align
+  reasonably with humans → code verification of quotes, flags routed to the
+  human, capable reviewer.
+- Guo et al., [*When Context Changes*](https://arxiv.org/abs/2609.38866)
+  (2026), and [*Unable to Forget*](https://arxiv.org/abs/2506.08184) (2025):
+  stale values win over updates → superseded claims leave the live ledger.
+- Luo, Kasirzadeh & Shah, [*The More You Automate, the Less You See: Hidden
+  Pitfalls of AI Scientist Systems*](https://arxiv.org/abs/2509.08713) (2025):
+  post-hoc selection bias → success criteria fixed and locked before fitting.
+- Anthropic, [*Harness design for long-running application development*](https://www.anthropic.com/engineering/harness-design-long-running-apps)
   (2026): generator/evaluator separation and evaluators that check artefacts.
-- Comparative evidence on specification checking (VeriSpec-style LLM
-  verification vs test-based CASCADE-style checks): reading is low-precision,
+- Comparative evidence on specification checking (LLM verification such as
+  [VeriSpec](https://arxiv.org/abs/2610.01847) vs test-based checks such as
+  [CASCADE](https://arxiv.org/abs/2604.19400)): reading is low-precision,
   execution is high-precision → "no running of tests" is a deliberate
   non-goal, and reading-based flags are questions, not verdicts.
