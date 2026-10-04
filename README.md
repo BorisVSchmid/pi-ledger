@@ -412,6 +412,10 @@ src/
     prompts.ts          # Reviewer, turn-check and compaction-note prompts
 ```
 
+## Credits
+
+Ledger mode's lineage (code it forks, designs it borrows, research that shaped it) is in [CREDITS.md](./CREDITS.md).
+
 ## License
 
 MIT — [tintinweb](https://github.com/tintinweb) (forked by [monotykamary](https://github.com/monotykamary))
