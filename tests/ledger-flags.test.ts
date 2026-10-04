@@ -100,14 +100,11 @@ describe('close reasons', () => {
   const [f1, f2] = store.flags;
   const reason = (words: string) => closeReason(store, f2, words.split(' ').filter(Boolean));
 
-  it('requires one', () => {
-    expect(reason('')).toEqual({ error: expect.stringMatching(/reason is required/) });
-  });
-
-  it('expands presets, with or without a note', () => {
-    expect(reason('intended')).toEqual({ reason: 'intended (a deliberate choice)' });
-    expect(reason('Not-An-Issue')).toEqual({ reason: 'not an issue' });
-    expect(reason('fixed in fit.R:40')).toEqual({ reason: 'fixed: in fit.R:40' });
+  it('requires a few words of why; bare verdicts are refused', () => {
+    expect(reason('')).toEqual({ error: expect.stringMatching(/^Say why/) });
+    expect(reason('intended')).toHaveProperty('error');
+    expect(reason('not an')).toHaveProperty('error');
+    expect(reason('fixed in fit.R:40')).toEqual({ reason: 'fixed in fit.R:40' });
   });
 
   it('dup must name another existing flag', () => {
@@ -288,9 +285,12 @@ describe('runtime', () => {
     await h.rt.review(h.ctx, h.config, 'command');
     expect(await h.rt.flagCommand('', h.ctx)).toMatch(/F1[\s\S]*F2/);
     expect(await h.rt.flagCommand('F2 dismiss', h.ctx)).toMatch(/^Usage/);
-    expect(await h.rt.flagCommand('F2 close', h.ctx)).toMatch(/reason is required/);
+    expect(await h.rt.flagCommand('F2 close', h.ctx)).toMatch(/F2 not closed. Say why/);
+    expect(await h.rt.flagCommand('F2 close intended', h.ctx)).toMatch(/not closed/);
     expect(h.rt.state().flags.flags[1].status).toBe('open');
-    expect(await h.rt.flagCommand('F2 close intended', h.ctx)).toMatch(/F2 closed \(intended/);
+    expect(await h.rt.flagCommand('F2 close external forcing is deliberate', h.ctx)).toMatch(
+      /F2 closed \(external forcing/
+    );
     expect(h.pi.sendUserMessage).not.toHaveBeenCalled();
     expect(await h.rt.flagCommand('F1 send', h.ctx)).toMatch(/sent/);
     expect(h.pi.sendUserMessage.mock.calls[0][0]).toMatch(/^Ledger check: possible inconsistency/);
@@ -304,8 +304,8 @@ describe('runtime', () => {
     rt2.load(h.ctx);
     expect(rt2.state().flags.flags.map((f) => f.status)).toEqual(['closed', 'closed']);
     expect(rt2.state().flags.flags.map((f) => f.reason)).toEqual([
-      'fixed: in fit.R',
-      'intended (a deliberate choice)',
+      'fixed in fit.R',
+      'external forcing is deliberate',
     ]);
   });
 
@@ -342,7 +342,7 @@ describe('runtime', () => {
     expect(await h.rt.flagCommand('F1 close', h.ctx)).toMatch(/not closed/);
     expect(h.rt.state().flags.flags[0].status).toBe('open');
     h.ctx.ui.input = vi.fn(async () => ' fixed  in fit.R ');
-    expect(await h.rt.flagCommand('F1 close', h.ctx)).toMatch(/closed \(fixed: in fit\.R\)/);
+    expect(await h.rt.flagCommand('F1 close', h.ctx)).toMatch(/closed \(fixed in fit\.R\)/);
     expect(h.ctx.ui.input.mock.calls[0][0]).toMatch(/^Why close F1\? \(First\?\)/);
   });
 
@@ -352,24 +352,26 @@ describe('runtime', () => {
     await h.rt.review(h.ctx, h.config, 'command');
     const said = 'Frequency dependence is the deliberate choice for this host.';
     h.replies.push({ ok: true, json: { interpretation: said }, model: null } as never);
-    await h.rt.flagCommand('F1 close intended', h.ctx, h.config);
+    await h.rt.flagCommand('F1 close chosen on purpose', h.ctx, h.config);
     await h.rt.pendingInterpretation;
     const [f1, f2] = h.rt.state().flags.flags;
-    expect(f1).toMatchObject({ reason: 'intended (a deliberate choice)', interpretation: said });
+    expect(f1).toMatchObject({ reason: 'chosen on purpose', interpretation: said });
     const call = (h.rt.callModel as any).mock.calls.at(-1)[1];
     expect(call.systemPrompt).toMatch(/one sentence/);
-    expect(call.userPrompt).toMatch(/\[Human's reason for closing\]\nintended/);
-    expect(renderFlag(f1).join('\n')).toMatch(/Your note: intended.*\n {2}\(interpretation: Freq/);
+    expect(call.userPrompt).toMatch(/\[Human's reason for closing\]\nchosen on purpose/);
+    expect(renderFlag(f1).join('\n')).toMatch(
+      /Your note: chosen on purpose\n {2}\(interpretation: Freq/
+    );
     expect(flagsForPrompt(h.rt.state().flags)).toMatch(
-      /"reason": "intended \(a deliberate choice\)",\n {2}"interpretation_by_model": "Freq/
+      /"reason": "chosen on purpose",\n {2}"interpretation_by_model": "Freq/
     );
     expect(h.ctx.ui.notify.mock.calls.at(-1)[0]).toMatch(/^F1 \(interpretation: Freq/);
 
     // Re-closing replaces the reason and drops the old interpretation.
     h.replies.push({ ok: false, error: 'boom', model: null } as never);
-    await h.rt.flagCommand('F1 close not-an-issue', h.ctx, h.config);
+    await h.rt.flagCommand('F1 close not a real difference', h.ctx, h.config);
     await h.rt.pendingInterpretation;
-    expect(f1.reason).toBe('not an issue');
+    expect(f1.reason).toBe('not a real difference');
     expect(f1.interpretation).toBeUndefined();
 
     // A long reason speaks for itself: no model call.

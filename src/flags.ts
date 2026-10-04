@@ -158,21 +158,17 @@ export function findFlag(store: FlagStore, id: string): Flag | undefined {
   return store.flags.find((f) => f.id.toLowerCase() === id.toLowerCase());
 }
 
-/** Short close reasons, so a reason costs a word to type. */
-export const CLOSE_PRESETS: Record<string, string> = {
-  intended: 'intended (a deliberate choice)',
-  'not-an-issue': 'not an issue',
-  fixed: 'fixed',
-};
+/** A bare "fixed" or "intended" says that, not why; a reason needs a few words. */
+const MIN_REASON_WORDS = 3;
 
 export const CLOSE_USAGE =
-  'A reason is required: /flag <id> close intended | not-an-issue | fixed | dup F<n> | <your own words>';
+  'Say why in a few words: /flag <id> close <why>, or /flag <id> close dup F<n>';
 
 /**
- * The reason recorded for `/flag <id> close <words>`. A preset word expands
- * ("fixed in fit.R" -> "fixed: in fit.R"); `dup F<n>` must name another flag;
- * anything else is kept as typed. The reason is always the human's words:
- * closed flags reach the reviewer as the human's verdict.
+ * The reason recorded for `/flag <id> close <words>`: free text of at least
+ * MIN_REASON_WORDS words, kept as typed, or `dup F<n>` naming another flag.
+ * The reason is always the human's words: closed flags reach the reviewer as
+ * the human's verdict.
  */
 export function closeReason(
   store: FlagStore,
@@ -180,17 +176,14 @@ export function closeReason(
   words: string[]
 ): { reason: string } | { error: string } {
   const [first = '', ...more] = words;
-  const tail = more.join(' ');
   const key = first.toLowerCase();
-  if (!first) return { error: CLOSE_USAGE };
   if (key === 'dup' || key === 'duplicate') {
     const [ref = '', ...note] = more;
     const other = findFlag(store, ref);
     if (!other || other === flag) return { error: `dup needs another flag id, e.g. dup F1.` };
     return { reason: [`duplicate of ${other.id}`, note.join(' ')].filter(Boolean).join(': ') };
   }
-  const preset = CLOSE_PRESETS[key];
-  if (preset) return { reason: tail ? `${preset}: ${tail}` : preset };
+  if (words.length < MIN_REASON_WORDS) return { error: CLOSE_USAGE };
   return { reason: words.join(' ') };
 }
 
