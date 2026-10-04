@@ -135,6 +135,8 @@ export interface ReviewerFlag {
   b?: Side | null;
   argument?: string;
   question: string;
+  /** Id of an open flag this finding repeats ("F3"). */
+  same_as?: string;
 }
 
 export interface ReviewerOutput {
@@ -160,7 +162,10 @@ export function coerceReviewerOutput(raw: unknown): ReviewerOutput | undefined {
       isSide((f as ReviewerFlag).a) &&
       ((f as ReviewerFlag).b == null || isSide((f as ReviewerFlag).b))
   );
-  for (const f of flags) f.type = Number.isFinite(Number(f.type)) ? Number(f.type) : 0;
+  for (const f of flags) {
+    f.type = Number.isFinite(Number(f.type)) ? Number(f.type) : 0;
+    if (!isStr(f.same_as)) delete f.same_as;
+  }
   const edits = (Array.isArray(r.register_edits) ? r.register_edits : []).filter(
     (e): e is RegisterEdit => {
       if (typeof e !== 'object' || e === null) return false;
@@ -246,6 +251,7 @@ export function verifyReview(out: ReviewerOutput, v: VerifyContext): VerifiedRev
         b: f.b ?? null,
         question: f.question,
         argument: f.argument,
+        ...(f.same_as ? { sameAs: f.same_as } : {}),
       });
     } else droppedFlags++;
   }
@@ -267,11 +273,7 @@ export function verifyReview(out: ReviewerOutput, v: VerifyContext): VerifiedRev
 // ---------- triggers ----------
 
 export type ReviewReason =
-  | 'command'
-  | 'register_change'
-  | 'breakpoint'
-  | 'before_compaction'
-  | 'backstop';
+  'command' | 'register_change' | 'breakpoint' | 'before_compaction' | 'backstop';
 
 export interface TriggerInput {
   turn: number;
@@ -283,6 +285,8 @@ export interface TriggerInput {
   register: Register;
   /** The last review added a concept or realization. */
   registerGrewLastReview: boolean;
+  /** MODEL_SPEC.md changed this turn. */
+  specChanged?: boolean;
   ledgerBefore: string | null | undefined;
   ledgerAfter: string | null;
   triggers: {
@@ -321,13 +325,21 @@ function sectionChanged(before: string, after: string, heading: RegExp): boolean
   return pick(before) !== pick(after);
 }
 
-/** Which automatic trigger fires after a turn, if any. One review per turn at most. */
+/**
+ * Which automatic trigger fires after a turn, if any. One review per turn at most.
+ *
+ * register_change needs an edit this turn: a model-file hunk that touches a
+ * registered concept (or any hunk, if the last review grew the register), or a
+ * change to MODEL_SPEC.md. Register growth alone does not fire it, because
+ * nearly every review adds a realization and would otherwise trigger the next.
+ */
 export function automaticTrigger(t: TriggerInput): ReviewReason | null {
   if (t.lastReviewTurn === t.turn) return null;
+  const edited = !!t.turnDiff && t.turnDiff.hunks.length > 0;
   if (
     t.triggers.onRegisterChange &&
-    ((t.turnDiff && t.turnDiff.hunks.length > 0 && touchesConcept(t.turnDiff, t.register)) ||
-      t.registerGrewLastReview)
+    ((edited && (t.registerGrewLastReview || touchesConcept(t.turnDiff!, t.register))) ||
+      t.specChanged)
   ) {
     return 'register_change';
   }
@@ -343,6 +355,37 @@ export function automaticTrigger(t: TriggerInput): ReviewReason | null {
   const n = t.triggers.idleAfterModelEditsEveryNTurns;
   if (n > 0 && t.modelEditsSinceReview && t.turn - t.lastReviewTurn >= n) return 'backstop';
   return null;
+}
+
+// ---------- review notice ----------
+
+const clip = (s: string, n: number) => {
+  const one = s.replace(/\s+/g, ' ').trim();
+  return one.length > n ? one.slice(0, n - 1) + '…' : one;
+};
+
+/**
+ * The human-facing notice after a review: counts, plus a short digest of the
+ * new flags (id, concept, question) and which open flags were raised again.
+ */
+export function reviewNotice(
+  created: Array<{ id: string; concept: string; question: string }>,
+  repeatOf: string[],
+  dropped: number,
+  maxListed = 3
+): string {
+  const head =
+    `Supervisor review: ${created.length} new question(s)` +
+    (repeatOf.length ? `, ${repeatOf.length} repeat(s) of open flags` : '') +
+    (dropped ? `, ${dropped} dropped (quotes not found)` : '');
+  const lines = [head];
+  for (const f of created.slice(0, maxListed))
+    lines.push(`  ${f.id} · ${f.concept}: ${clip(f.question, 140)}`);
+  if (created.length > maxListed) lines.push(`  …and ${created.length - maxListed} more`);
+  const again = [...new Set(repeatOf)];
+  if (again.length) lines.push(`  raised again: ${again.join(', ')}`);
+  if (created.length || again.length) lines.push('  See /flag.');
+  return lines.join('\n');
 }
 
 // ---------- compaction note ----------

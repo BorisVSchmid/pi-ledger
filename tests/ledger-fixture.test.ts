@@ -166,8 +166,8 @@ describe('reviewer verification on variant 1 (density-dependent copy)', () => {
     expect(h.rt.state().metrics['review.flags_dropped_unverified']).toBe(2);
     expect(h.rt.state().metrics['review.edits_dropped_unverified']).toBe(1);
     expect(reg.concepts['P1 Transmission'].realizations).toHaveLength(1);
-    // a model cannot claim user authority
-    expect(reg.concepts['P1 Transmission'].stated?.source).toBe('reviewer (user)');
+    // a model cannot claim user authority, so the spec's statement stands
+    expect(reg.concepts['P1 Transmission'].stated?.source).toBe('spec');
     expect(reg.restatement?.text).toMatch(/SEIR/);
     expect(readFileSync(join(h.cwd, '.pi', 'FLAGS.md'), 'utf8')).toMatch(/Open questions \(1\)/);
     // flags never steer on their own
