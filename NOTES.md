@@ -1,6 +1,109 @@
-# Ledger mode: implementation notes
+# pi-ledger: implementation notes
 
-Working notes for implementing `ledger-mode-brief/DESIGN_BRIEF.md` in this fork.
+Working notes for `brief/DESIGN_BRIEF.md`. Deliverables 1 to 8 below were built as "ledger
+mode" inside the pi-supervisor fork; the split into the standalone pi-ledger and the
+simplification after it come first. Older sections keep their original paths (`ledger-mode-brief/`, `examples/ledger-mode/`,
+`/supervise register`); the first two are now `brief/` and `examples/project/`, the register is gone.
+
+## Simplification (2026-10-04, after the split)
+
+Boris asked whether the plugin could be simpler, taking the PC run's view on what earned its
+complexity. The source went from 16 files in `src/ledger/` and `src/ui/` to seven in `src/`:
+`index.ts`, `config.ts`, `monitor.ts` (was checks, monitor, status), `reviewer.ts` (was
+reviewer, prompts), `flags.ts` (new; the flag half of the old register and flags-file),
+`model-session.ts` (was model-session, model-call) and `runtime.ts` (was runtime, state,
+commands). Defaults taken without asking:
+
+- **Dropped the concept register** (`register.ts`, `/ledger register`, `.pi/model-register.md`,
+  `syncFromSpec`, register edits in the reviewer output). It mostly restated the spec, caused
+  the stale-label and review-loop fixes below, and needed its own merge logic. The reviewer now
+  reads `MODEL_SPEC.md` fresh and names concepts by its current `## P<n>` heading; flags are
+  matched by that P-id (`conceptKey`), by evidence, or by overlapping locations
+  (`LINE_SLACK` = 3). A spec rename therefore needs no migration.
+- **Dropped `runs.jsonl` and the run recorder.** Nothing read it; run ids in the ledger are the
+  agent's own (`R<n>`), checked only by the status line's "passed needs a run id" rule.
+- **Dropped `turnModel`** (the optional per-turn model call) and its prompt. Off by default and
+  never used in a run.
+- **Dropped the injection regex.** It only caught text addressed to "the supervisor"; the
+  reviewer handles that as type 0. Fixture variant 9 now expects no monitor finding.
+- **Dropped the model picker and `/ledger model`** (`src/ui/*`). Set `reviewer.model` in the
+  config. The reviewer falls back to the chat model when unset.
+- **Kept D5 (CJK ratio)** because GLM models drift into Chinese, which was the reason for adding
+  it; it costs a dozen lines.
+- **Triggers fixed in code: edit, before_compaction, command.** `edit` fires when the turn
+  changed a model file or `MODEL_SPEC.md` changed after its first sighting. Breakpoint and
+  backstop triggers, cooldowns and the `triggers` config block are gone. A review cannot
+  trigger another one because a turn without edits never reviews.
+- **`/flag <id> close [reason]`** replaces `intended` and `dismiss`, which were the same action.
+  Both old words still work as aliases. Statuses are `open`, `sent`, `closed`.
+- **Compaction note reworded**: it lists summary statements that _differ_ from the ledger and
+  says to check which is current, since the ledger can be behind. The prompt's key is
+  `differs`; replies under the old `stale` key are still accepted.
+- **Model files:** top-level `*.{R,stan}` added to the default `modelFiles`; `**/archive/**`
+  added to `ignore`, and the AGENTS snippet says retired code goes under `archive/` with its
+  `@concept` tags removed.
+- **Config trimmed** to `autoEnable`, `reviewer {model, fallbackModel, thinking}` and
+  `files {ledger, spec, modelFiles, ignore}`. Locked headings, the CJK threshold and the 120k
+  model-file cap are constants. Unknown keys in old configs are ignored.
+- **State:** the session entry names stay (`supervisor-ledger-state`,
+  `supervisor-compaction-note`) and the state is now version 2. `restoreState` migrates a
+  version 1 entry, turning register flags into flat flags (`intended`/`dismissed` → `closed`),
+  so Boris's paused PC session resumes.
+- **Testing seam:** `sessions.create` in `model-session.ts` is injectable, so tests replace the
+  in-memory session without module mocks.
+- Tests: 8 files, 68 pass (the register and flag-fix tests were replaced by
+  `tests/ledger-flags.test.ts`); prettier clean; the offline Pi probe passes.
+
+The sections below describe the plugin before this change. Where they mention the register,
+`runs.jsonl`, `turnModel`, `/ledger model`, `intended|dismiss` or `src/ledger/*` paths, those
+no longer exist.
+
+## Split into pi-ledger (2026-10-04)
+
+Boris decided on one plugin with one job (integrity), goal mode removed rather than switched
+off, no `/supervise`. Defaults taken without asking, per his preference:
+
+- **Same repository, new package name.** `package.json` is now `pi-ledger` 0.1.0, built on a
+  branch of `BorisVSchmid/pi-supervisor`. Renaming the GitHub repository (or moving to a new one)
+  is Boris's call; `repository`/`homepage` point at the current repo until then. `LICENSE` keeps
+  the upstream MIT notice unchanged.
+- **Removed:** `src/core`, `src/state`, `src/compaction`, `src/session/client.ts` and
+  `response-parser.ts`, `src/ui/renderer.ts`/`animations.ts`/`types.ts`, `src/fabric-provider.ts`,
+  `src/subagent-detector.ts`, `src/types.ts`, `src/global-config.ts`, the `start_supervision` tool,
+  `media/` (the upstream demo), and their tests. Kept: the in-memory model session (moved to
+  `src/ledger/model-session.ts`, class `ModelSession`) and the model picker (`src/ui/model-*`).
+- **Commands:** `/ledger [status] | on | off | register | metrics | model`, `/review`, `/flag`.
+  `register` and `metrics` moved from `/supervise`. `model` replaces `/supervise model` and writes
+  `reviewer.model`. `/review` refuses while the ledger is off; `/flag` works either way.
+- **On/off:** on at session start when `files.ledger` exists (`autoEnable`, default true),
+  otherwise off. `/ledger on|off` is stored in the session state (`enabled`) and wins over
+  `autoEnable` on reload. Off means no monitor, no reviewer, no run log, no status line.
+- **Status line** (`src/ledger/status.ts`, Pi `ctx.ui.setStatus('ledger', …)`): Acceptance items
+  are `- AC<n>: …` under `## Acceptance`; an item is passed only when its last `AC<n> status:`
+  line (anywhere in the ledger) says passed and cites `R<n>`. The convention mirrors the
+  existing `C1 status: passed (R4)` for Checks and is added to the MEMENTO template and AGENTS
+  snippet. "ledger behind" means the last turn had a D1/D2 finding; this needed one new state
+  field, `lastTurnFindings`, set in `runtime.onSettled`. The line refreshes after each turn,
+  `/flag`, `/ledger on|off`, and when a background review finishes.
+- **Config:** `.pi/ledger-config.json`, then `<agentDir>/ledger-config.json`; at each location
+  the legacy `supervisor-config.json` is read if the new file is absent, and its old top-level
+  `model` becomes `reviewer.model` when that is unset. `mode` and `upstream` keys are gone (and
+  ignored if present). `reviewer.model: null` now means the chat model (there is no separate
+  supervisor model any more).
+- **Session entry types kept:** `supervisor-ledger-state` and `supervisor-compaction-note` keep
+  their names so sessions started under the fork still load.
+- **Renamed directories:** `ledger-mode-brief/` to `brief/`, `examples/ledger-mode/` to
+  `examples/project/`, example config to `ledger-config.json`.
+- **CI:** `.github/workflows/test.yml` now also triggers on `master` (it only listed `main`, so
+  it never ran). It still uses `bun install --frozen-lockfile`; the lockfile's root name was
+  updated to `pi-ledger`, but bun here cannot read the lockfile, so whether CI installs cleanly is
+  untested.
+- **CREDITS.md** is Boris's longer version (the "How it differs" sections), reworded where it
+  described ledger mode as a mode of pi-supervisor, with one factual fix: the compaction
+  paragraph said `beforeCompaction` asks the agent for a ledger update; the code starts a
+  background review instead. The research citations are as corrected on master (PR #3).
+  It still mentions an "optional anchor re-injection" that is not implemented.
+- **Not done:** no live Pi run of the split plugin yet (tests and the offline Pi probe only).
 
 ## Starting point
 

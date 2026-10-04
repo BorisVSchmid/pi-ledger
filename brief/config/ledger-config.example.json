@@ -1,0 +1,19 @@
+{
+  "autoEnable": true,
+  "reviewer": {
+    "model": "anthropic/claude-opus-4-8",
+    "fallbackModel": "zai/glm-5.3",
+    "thinking": "high"
+  },
+  "files": {
+    "ledger": "MEMENTO.md",
+    "spec": "MODEL_SPEC.md",
+    "modelFiles": ["*.{R,stan}", "R/**/*.R", "src/**/*.{R,stan,clj,py}", "models/**/*"],
+    "ignore": ["**/node_modules/**", "**/.git/**", "**/renv/**", "**/archive/**"]
+  },
+  "_notes": {
+    "autoEnable": "Switch the ledger on at session start when files.ledger exists. /ledger on|off overrides this for the session.",
+    "reviewer.model": "Prefer a capable model from a different family than the working agent. null = the chat model. The fallback is used when the primary is unavailable or the call fails.",
+    "files.modelFiles": "What the reviewer reads and the monitor diffs. Archived code is ignored."
+  }
+}

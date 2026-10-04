@@ -13,7 +13,7 @@ import {
   getCurrentSystemPrompt,
   getCurrentTools,
 } from '@earendil-works/pi-ai/compat';
-import { SupervisorSession } from '../src/session/supervisor-session.js';
+import { ModelSession } from '../src/model-session.js';
 
 it('inherits the parent native provider runtime for real SDK supervisor sessions', async () => {
   const root = mkdtempSync(join(tmpdir(), 'pi1-supervisor-'));
@@ -21,7 +21,7 @@ it('inherits the parent native provider runtime for real SDK supervisor sessions
   const previousFetch = globalThis.fetch;
   globalThis.fetch = async () => new Response('', { status: 503 });
   process.env.PI_CODING_AGENT_DIR = root;
-  const supervisor = new SupervisorSession();
+  const supervisor = new ModelSession();
   try {
     const runtime = await ModelRuntime.create({
       authPath: join(root, 'auth.json'),

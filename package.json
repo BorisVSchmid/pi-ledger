@@ -1,26 +1,26 @@
 {
-  "name": "@monotykamary/pi-supervisor",
-  "version": "0.5.23",
-  "description": "A pi extension that supervises the chat and steers it towards a defined outcome",
-  "author": "tintinweb (forked by monotykamary)",
+  "name": "pi-ledger",
+  "version": "0.1.0",
+  "description": "Surely You're Joking: a Pi extension that keeps a research session's ledger and model honest. Derived from pi-supervisor.",
+  "author": "Boris V. Schmid (derived from pi-supervisor by tintinweb, forked by monotykamary)",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/monotykamary/pi-supervisor.git"
+    "url": "git+https://github.com/BorisVSchmid/pi-supervisor.git"
   },
-  "homepage": "https://github.com/monotykamary/pi-supervisor#readme",
+  "homepage": "https://github.com/BorisVSchmid/pi-supervisor#readme",
   "bugs": {
-    "url": "https://github.com/monotykamary/pi-supervisor/issues"
+    "url": "https://github.com/BorisVSchmid/pi-supervisor/issues"
   },
   "keywords": [
     "pi-package",
     "pi",
     "pi-extension",
-    "supervisor",
-    "steering",
-    "outcome",
-    "agent",
-    "productivity"
+    "ledger",
+    "research",
+    "integrity",
+    "reviewer",
+    "memento"
   ],
   "files": [
     "src/**/*.ts",
@@ -30,7 +30,7 @@
     "README.md",
     "CHANGELOG.md",
     "LICENSE",
-    "media/"
+    "CREDITS.md"
   ],
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",
@@ -79,9 +79,7 @@
   "pi": {
     "extensions": [
       "./src/index.ts"
-    ],
-    "video": "https://github.com/monotykamary/pi-supervisor/raw/master/media/demo.mp4",
-    "image": "https://github.com/monotykamary/pi-supervisor/raw/master/media/screenshot.png"
+    ]
   },
   "overrides": {
     "brace-expansion": "5.0.6",

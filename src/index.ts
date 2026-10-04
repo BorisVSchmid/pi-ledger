@@ -1,639 +1,187 @@
 /**
- * pi-supervisor — A pi extension that supervises the chat and steers it toward a defined outcome.
+ * pi-ledger — "Surely You're Joking". Keeps a research session's ledger and
+ * model honest. It never steers the work's direction and never judges
+ * whether the work is done.
  *
- * Uses algorithmic compaction (normalize → filter → build-sections) to build
- * structured conversation context for the supervisor LLM, instead of
- * tracking turns or maintaining rolling message buffers.
+ *  monitor.ts   code-only checks after every agent run, and the status line
+ *  reviewer.ts  a capable model reviews the model's code against its spec and
+ *               ledger; the post-compaction note
+ *  flags.ts     the reviewer's questions for the human
+ *  runtime.ts   state, files and model calls (glue); this file wires up Pi
  *
  * Commands:
- *   /supervise              — auto-infer goal from conversation
- *   /supervise <outcome>    — start supervising with explicit goal
- *   /supervise stop         — stop supervising
- *   /supervise widget       — toggle the status widget on/off
+ *   /ledger [status]   status line and Acceptance detail
+ *   /ledger on | off   switch the ledger on or off for this session
+ *   /ledger metrics    counters
+ *   /review [note]     review the model now
+ *   /flag ...          list, close or send reviewer flags
  */
 
-import { truncateToWidth } from '@earendil-works/pi-tui';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
 import type { ExtensionAPI, ExtensionContext } from '@earendil-works/pi-coding-agent';
-import { SupervisorStateManager } from './state/manager.js';
-import { analyze } from './core/analyzer.js';
-import { inferOutcome } from './core/inference.js';
-import { loadSystemPrompt } from './core/prompt-loader.js';
-import { updateUI, toggleWidget } from './ui/renderer.js';
-import { pickModel } from './ui/model-picker.js';
-import { loadGlobalModel, saveGlobalModel } from './global-config.js';
-import { disposeSession } from './session/client.js';
-import { Type } from 'typebox';
-import { checkChildPiProcesses, waitForSubagents } from './subagent-detector.js';
-import { detectMidRunSignals } from './state/mid-run-signals.js';
-import { registerFabricProvider } from './fabric-provider.js';
-import { createInitialState, type WidgetState } from './ui/types.js';
-import {
-  defaultConfig,
-  isLedgerMode,
-  loadLedgerConfig,
-  type LedgerConfig,
-} from './ledger/config.js';
-import { LedgerRuntime } from './ledger/runtime.js';
-import { flagCommand, metricsText, registerText } from './ledger/commands.js';
-import {
-  extractMessages,
-  buildCompactionSummary,
-  formatForSupervisor,
-} from './compaction/index.js';
+import { defaultConfig, loadLedgerConfig, type LedgerConfig } from './config.js';
+import { LedgerRuntime, readTextOrNull } from './runtime.js';
+import { statusDetail, statusLine } from './monitor.js';
 
-/**
- * Extract partial reasoning text from the supervisor's streaming JSON response.
- */
-export function extractThinking(accumulated: string): string {
-  const keyIdx = accumulated.indexOf('"reasoning"');
-  if (keyIdx === -1) return '';
-  const after = accumulated.slice(keyIdx + '"reasoning"'.length);
-  const openMatch = after.match(/^\s*:\s*"/);
-  if (!openMatch) return '';
-  const content = after.slice(openMatch[0].length);
-  const closeIdx = content.search(/(?<!\\)"/);
-  const raw = closeIdx === -1 ? content : content.slice(0, closeIdx);
-  return raw.replace(/\\n/g, ' ').replace(/\\"/g, '"').trim();
-}
+const STATUS_KEY = 'ledger';
 
-function truncateForNotify(message: string, reserveChars: number = 20): string {
-  const terminalWidth = process.stdout.columns || 100;
-  const maxContentWidth = Math.max(20, terminalWidth - reserveChars);
-  return truncateToWidth(message.replace(/\r?\n/g, ' '), maxContentWidth, '…');
-}
-
-/** Check if the session has any user messages in its history. */
-function hasUserMessages(ctx: ExtensionContext): boolean {
-  const messages = extractMessages(ctx);
-  for (const msg of messages) {
-    if (msg.role === 'user') {
-      const content =
-        typeof msg.content === 'string'
-          ? msg.content
-          : Array.isArray(msg.content)
-            ? msg.content
-                .filter((b: any) => b.type === 'text')
-                .map((b: any) => b.text)
-                .join('\n')
-                .trim()
-            : '';
-      if (content && content.length > 0) return true;
-    }
-  }
-  return false;
-}
-
-const LEDGER_NO_GOAL =
-  'Ledger mode: the supervisor flags ledger drift and model inconsistencies; it does not supervise toward a goal. ' +
-  'Use /review, /flag, /supervise register or /supervise metrics.';
+const SUBCOMMANDS = [
+  { value: 'status', label: 'status', description: 'Status line and Acceptance detail' },
+  { value: 'on', label: 'on', description: 'Switch the ledger on for this session' },
+  { value: 'off', label: 'off', description: 'Switch the ledger off for this session' },
+  { value: 'metrics', label: 'metrics', description: 'Show ledger counters' },
+];
 
 export default function (pi: ExtensionAPI) {
-  const state = new SupervisorStateManager(pi);
-  const widgetState = createInitialState();
-  let currentCtx: ExtensionContext | undefined;
-  let userInputEpoch = 0;
-  // Ledger mode is opt-in via .pi/supervisor-config.json ("mode": "ledger").
-  // Every ledger-mode behaviour is gated on this; goal mode is unchanged.
-  let ledgerConfig: LedgerConfig = defaultConfig();
+  let config: LedgerConfig = defaultConfig();
+  let enabled = false;
   const ledger = new LedgerRuntime(pi);
 
-  pi.on('input', (event) => {
-    if (event.source === 'interactive' || event.source === 'rpc') {
-      userInputEpoch++;
-    }
-  });
-  pi.on('before_agent_start', () => {
-    userInputEpoch++;
-  });
+  const ledgerPath = (ctx: ExtensionContext) => path.resolve(ctx.cwd, config.files.ledger);
 
-  // ---- Ledger mode: turn baseline and run log ----
-  pi.on('before_agent_start', async (_event, ctx) => {
-    if (isLedgerMode(ledgerConfig)) await ledger.onAgentStart(ctx, ledgerConfig);
-  });
-  pi.on('tool_call', async (event, ctx) => {
-    if (isLedgerMode(ledgerConfig)) await ledger.onToolCall(event, ctx, ledgerConfig);
-  });
-
-  const startSupervisionFromModel = async (
-    outcome: string,
-    ctx: ExtensionContext
-  ): Promise<string> => {
-    if (isLedgerMode(ledgerConfig)) return LEDGER_NO_GOAL;
-    if (state.isActive()) {
-      const activeState = state.getState()!;
-      return (
-        `Supervision is already active and cannot be changed by the model.\n` +
-        `Active outcome: "${activeState.outcome}"\n` +
-        `Only the user can stop or modify supervision via /supervise.`
-      );
-    }
-
-    const globalModel = loadGlobalModel();
-    const sessionModel = ctx.model;
-    const provider = globalModel?.provider ?? sessionModel?.provider ?? 'unknown';
-    const modelId = globalModel?.modelId ?? sessionModel?.id ?? 'unknown';
-
-    state.start(outcome, provider, modelId);
-    currentCtx = ctx;
-    updateUI(ctx, widgetState, state.getState());
-
-    if (ctx.isIdle()) {
-      pi.sendUserMessage(`Please start working on this goal: ${outcome}`, {
-        deliverAs: 'followUp',
-      });
-    }
-
-    ctx.ui.notify(`Supervisor started by agent: "${truncateForNotify(outcome, 30)}"`, 'info');
-    return `Supervision active. Outcome: "${outcome}"`;
+  const currentStatus = async (ctx: ExtensionContext) => {
+    const text = await readTextOrNull(ledgerPath(ctx));
+    const line = statusLine({
+      ledgerText: text,
+      ledgerName: config.files.ledger,
+      state: ledger.state(),
+      reviewing: ledger.pending !== null,
+    });
+    return { text, line };
   };
 
-  registerFabricProvider(pi, {
-    start: startSupervisionFromModel,
-    getState: () => state.getState(),
-  });
+  const refreshStatus = async (ctx: ExtensionContext): Promise<void> => {
+    ctx.ui.setStatus(STATUS_KEY, enabled ? (await currentStatus(ctx)).line : undefined);
+  };
 
-  // ---- Session lifecycle: restore state ----
+  /** Refresh now, and again when a background review finishes. */
+  const refreshAfterWork = async (ctx: ExtensionContext): Promise<void> => {
+    await refreshStatus(ctx);
+    void ledger.pending?.then(() => refreshStatus(ctx));
+  };
 
-  const onSessionLoad = (ctx: ExtensionContext) => {
-    currentCtx = ctx;
-    ledgerConfig = loadLedgerConfig(ctx.cwd);
-    if (isLedgerMode(ledgerConfig)) {
-      ledger.load(ctx);
-      ctx.ui.notify('Supervisor: ledger mode', 'info');
-      void ledger.seedFromSpec(ctx, ledgerConfig);
-    }
-    state.loadFromSession(ctx);
+  const setEnabled = (value: boolean) => {
+    enabled = value;
+    ledger.state().enabled = value;
+    ledger.persist();
+  };
 
-    if (state.isActive() && ctx.isIdle()) {
-      state.stop();
-      disposeSession();
-      ctx.ui.notify('Supervision cleared: agent is idle', 'info');
-    }
+  // ---- Session lifecycle ----
 
-    updateUI(ctx, widgetState, state.getState());
+  const onSessionLoad = async (ctx: ExtensionContext) => {
+    config = loadLedgerConfig(ctx.cwd);
+    ledger.load(ctx);
+    enabled = ledger.state().enabled ?? (config.autoEnable && existsSync(ledgerPath(ctx)));
+    await refreshStatus(ctx);
   };
 
   pi.on('session_start', async (_event, ctx) => onSessionLoad(ctx));
-  pi.on('session_start', async (event, ctx) => {
-    if (event.reason === 'startup' || event.reason === 'reload') return;
-    onSessionLoad(ctx);
-  });
   pi.on('session_tree', async (_event, ctx) => onSessionLoad(ctx));
 
-  // ---- Compaction survival: persist state BEFORE compaction ----
-  pi.on('session_before_compact', async (_event, ctx) => {
-    if (state.isActive()) {
-      state.persist();
-    }
-    // Ledger mode: review the model before context is lost. Runs in the
-    // background on artefacts only, so compaction is not delayed.
-    if (isLedgerMode(ledgerConfig) && ledgerConfig.reviewer.triggers.beforeCompaction) {
-      ledger.startReview(ctx, ledgerConfig, 'before_compaction');
-    }
+  // ---- Monitor ----
+
+  pi.on('before_agent_start', async (_event, ctx) => {
+    if (enabled) await ledger.onAgentStart(ctx, config);
   });
 
-  // ---- After compaction: reload state and continue if agent is working ----
-  pi.on('session_compact', async (event, ctx) => {
-    currentCtx = ctx;
-    // Ledger mode: the summary stays as written; a separate supervisor note
-    // flags statements in it that the ledger has since crossed out or contradicted.
-    if (isLedgerMode(ledgerConfig) && ledgerConfig.compaction.annotateSummaries) {
-      ledger.startCompactionNote(ctx, ledgerConfig, event.compactionEntry.summary);
-    }
-    state.loadFromSession(ctx);
-
-    if (!state.isActive()) {
-      updateUI(ctx, widgetState, null);
-      return;
-    }
-
-    // Skip the clear-on-idle teardown when an overflow retry is pending
-    // (event.willRetry). The aborted turn resumes after compaction, so
-    // agent_settled will fire again with the full resumed run and the
-    // supervision loop should stay attached.
-    if (ctx.isIdle() && !event.willRetry) {
-      state.stop();
-      disposeSession();
-      ctx.ui.notify('Supervision cleared: compaction complete, agent idle', 'info');
-      updateUI(ctx, widgetState, null);
-      return;
-    }
-
-    updateUI(ctx, widgetState, state.getState(), {
-      type: 'watching',
-      reframeTier: state.getReframeTier(),
-    });
-  });
-
-  // ---- Keep ctx fresh ----
-
-  pi.on('turn_start', async (_event, ctx) => {
-    currentCtx = ctx;
-  });
-
-  // ---- Mid-run steering: signal-based ----
-  // turn_end fires after each LLM sub-turn while agent is still running.
-  // Instead of a blind turn counter, we check for reactive signals:
-  // - just steered → verify it worked
-  // - tool error → check if the agent is stuck
-  // - file read loop → same file read 4+ times without an edit
-  // - read-only stagnation → 8+ consecutive read calls without a mutation
-
-  pi.on('turn_end', async (_event, ctx) => {
-    currentCtx = ctx;
-    // Ledger mode: no mid-run model analysis.
-    if (isLedgerMode(ledgerConfig)) return;
-    if (!state.isActive()) return;
-
-    const messages = extractMessages(ctx);
-    const signal = detectMidRunSignals(messages);
-    if (!signal) return;
-
-    let decision;
-    try {
-      decision = await analyze(ctx, state.getState()!, false /* agent still working */);
-    } catch {
-      return;
-    }
-
-    if (decision.action === 'steer' && decision.message && decision.confidence >= 0.85) {
-      state.addIntervention({
-        message: decision.message,
-        reasoning: decision.reasoning,
-        timestamp: Date.now(),
-        asi: decision.asi,
-      });
-      updateUI(ctx, widgetState, state.getState(), { type: 'steering', message: decision.message });
-      pi.sendUserMessage(decision.message, { deliverAs: 'steer' });
-    }
-  });
-
-  // ---- After each agent run: analyze + steer ----
-  // agent_settled fires once pi has fully settled — auto-retries, overflow-
-  // compaction recovery, and queued follow-up messages are all done.
-
+  // agent_settled fires once Pi has fully settled: retries, overflow
+  // recovery and queued follow-ups are done.
   pi.on('agent_settled', async (_event, ctx) => {
-    currentCtx = ctx;
-    if (isLedgerMode(ledgerConfig)) {
-      try {
-        await ledger.onSettled(ctx, ledgerConfig);
-      } catch (err) {
-        ctx.ui.notify(`Supervisor: ledger monitor failed (${String(err)})`, 'warning');
-      }
-      // Ledger mode never runs the goal analysis: no done, no reframe escalation,
-      // and nothing happens at idle beyond the monitor.
-      return;
+    if (!enabled) return;
+    try {
+      await ledger.onSettled(ctx, config);
+    } catch (err) {
+      ctx.ui.notify(`Ledger: monitor failed (${String(err)})`, 'warning');
     }
-    if (!state.isActive()) return;
-    const inputEpochAtStart = userInputEpoch;
-
-    const s = state.getState()!;
-
-    // Check for child subagent processes
-    const subagentStatus = await checkChildPiProcesses();
-    if (subagentStatus.hasActiveSubagents) {
-      updateUI(ctx, widgetState, s, {
-        type: 'waiting',
-        message: `Waiting for ${subagentStatus.count} subagent(s)...`,
-        reframeTier: state.getReframeTier(),
-      });
-
-      const { completed, finalStatus } = await waitForSubagents(2000, 120000);
-
-      if (!completed && finalStatus.hasActiveSubagents) {
-        ctx.ui.notify(
-          `Supervisor: ${finalStatus.count} subagent(s) still running after timeout, proceeding with analysis`,
-          'warning'
-        );
-      }
-
-      updateUI(ctx, widgetState, s, {
-        type: 'analyzing',
-        reframeTier: state.getReframeTier(),
-      });
-    }
-
-    // Check for ineffective steering patterns
-    const ineffectivePattern = state.detectIneffectivePattern();
-    if (ineffectivePattern.detected && state.getReframeTier() < 4) {
-      state.escalateReframeTier();
-    }
-
-    updateUI(ctx, widgetState, state.getState()!, {
-      type: 'analyzing',
-      reframeTier: state.getReframeTier(),
-    });
-
-    const decision = await analyze(
-      ctx,
-      state.getState()!,
-      true /* fully settled checkpoint */,
-      ineffectivePattern,
-      undefined,
-      (accumulated) => {
-        const thinking = extractThinking(accumulated);
-        updateUI(ctx, widgetState, state.getState()!, {
-          type: 'analyzing',
-          reframeTier: state.getReframeTier(),
-          thinking,
-        });
-      }
-    );
-
-    // A real user prompt supersedes a decision computed from the preceding
-    // settled snapshot. Do not race that prompt or steer from stale context.
-    if (userInputEpoch !== inputEpochAtStart) {
-      updateUI(ctx, widgetState, state.getState(), {
-        type: 'watching',
-        reframeTier: state.getReframeTier(),
-      });
-      return;
-    }
-
-    if (decision.action === 'steer' && decision.message) {
-      state.incrementIdleSteers();
-      state.addIntervention({
-        message: decision.message,
-        reasoning: decision.reasoning,
-        timestamp: Date.now(),
-        asi: decision.asi,
-      });
-      updateUI(ctx, widgetState, state.getState(), {
-        type: 'steering',
-        message: decision.message,
-        reframeTier: state.getReframeTier(),
-      });
-      pi.sendUserMessage(decision.message, { deliverAs: 'followUp' });
-    } else if (decision.action === 'done') {
-      state.resetIdleSteers();
-      state.resetReframeTier();
-      // Show 'done' with the outcome still visible before stopping
-      updateUI(ctx, widgetState, state.getState(), { type: 'done' });
-      state.stop();
-      disposeSession();
-    } else {
-      updateUI(ctx, widgetState, state.getState(), {
-        type: 'watching',
-        reframeTier: state.getReframeTier(),
-      });
-    }
+    await refreshAfterWork(ctx);
   });
 
-  // ---- /supervise command ----
+  // ---- Compaction ----
 
-  pi.registerCommand('supervise', {
-    description: 'Supervise the chat toward a desired outcome (/supervise or /supervise <outcome>)',
+  // Review the model before context is lost. Runs in the background on
+  // artefacts only, so compaction is not delayed. Never returns a compaction.
+  pi.on('session_before_compact', async (_event, ctx) => {
+    if (!enabled) return;
+    ledger.startReview(ctx, config, 'before_compaction');
+    await refreshAfterWork(ctx);
+  });
+
+  // The summary stays as written; a separate note lists statements in it
+  // that differ from the ledger.
+  pi.on('session_compact', async (event, ctx) => {
+    if (enabled) ledger.startCompactionNote(ctx, config, event.compactionEntry.summary);
+  });
+
+  // ---- /ledger ----
+
+  pi.registerCommand('ledger', {
+    description: 'Ledger status, or /ledger on|off|metrics',
     getArgumentCompletions(prefix: string) {
-      const subcommands = [
-        { value: 'model', label: 'model', description: 'Pick the supervisor model' },
-        { value: 'stop', label: 'stop', description: 'Stop active supervision' },
-        { value: 'widget', label: 'widget', description: 'Toggle the status widget' },
-        ...(isLedgerMode(ledgerConfig)
-          ? [
-              { value: 'register', label: 'register', description: 'Show the model register' },
-              { value: 'metrics', label: 'metrics', description: 'Show ledger-mode metrics' },
-            ]
-          : []),
-      ];
-      const matches = subcommands.filter((s) => s.value.startsWith(prefix));
+      const matches = SUBCOMMANDS.filter((s) => s.value.startsWith(prefix));
       return matches.length > 0 ? matches : null;
     },
     handler: async (args, ctx) => {
-      currentCtx = ctx;
-      const trimmed = args?.trim() ?? '';
+      const sub = args?.trim() ?? '';
 
-      // --- ledger-mode subcommands ---
-
-      if (isLedgerMode(ledgerConfig) && (trimmed === 'register' || trimmed === 'metrics')) {
-        ctx.ui.notify(trimmed === 'register' ? registerText(ledger) : metricsText(ledger), 'info');
-        return;
-      }
-
-      // --- subcommands ---
-
-      if (trimmed === 'widget') {
-        const visible = toggleWidget(widgetState);
-        if (state.isActive()) {
-          updateUI(ctx, widgetState, state.getState());
-        }
-        ctx.ui.notify(`Supervisor widget ${visible ? 'shown' : 'hidden'}.`, 'info');
-        return;
-      }
-
-      if (trimmed === 'stop') {
-        if (!state.isActive()) {
-          ctx.ui.notify('Supervisor is not active.', 'warning');
-          return;
-        }
-        state.stop();
-        state.resetIdleSteers();
-        disposeSession();
-        updateUI(ctx, widgetState, state.getState());
-        ctx.ui.notify('Supervisor stopped.', 'info');
-        return;
-      }
-
-      // /supervise model — pick the supervisor model and persist it to
-      // <cwd>/.pi/supervisor-config.json. Pre-highlights the model that the
-      // supervisor would currently use (active state > config > chat model).
-      // If supervision is active, the live session model is updated too.
-      if (trimmed === 'model') {
-        const existing = state.getState();
-        const globalModel = loadGlobalModel();
-        const sessionModel = ctx.model;
-        const currentProvider =
-          existing?.provider ?? globalModel?.provider ?? sessionModel?.provider;
-        const currentModelId = existing?.modelId ?? globalModel?.modelId ?? sessionModel?.id;
-
-        const picked = await pickModel(ctx, currentProvider, currentModelId);
-        if (!picked) {
-          ctx.ui.notify('Supervisor model selection cancelled.', 'info');
-          return;
-        }
-
-        const configPath = saveGlobalModel(ctx.cwd, {
-          provider: picked.provider,
-          modelId: picked.id,
-        });
-
-        if (state.isActive() && existing) {
-          state.setModel(picked.provider, picked.id);
-          updateUI(ctx, widgetState, state.getState());
-        }
-
+      if (sub === 'on' || sub === 'off') {
+        setEnabled(sub === 'on');
+        await refreshStatus(ctx);
+        const missing =
+          sub === 'on' && !existsSync(ledgerPath(ctx))
+            ? ` No ${config.files.ledger} yet; the ledger checks start once it exists.`
+            : '';
         ctx.ui.notify(
-          `Supervisor model set to ${picked.provider}/${picked.id} (saved to ${configPath}).`,
+          sub === 'on' ? `Ledger on.${missing}` : 'Ledger off for this session.',
           'info'
         );
         return;
       }
 
-      if (isLedgerMode(ledgerConfig)) {
-        ctx.ui.notify(LEDGER_NO_GOAL, 'info');
+      if (sub === 'metrics') {
+        ctx.ui.notify(ledger.metricsText(), 'info');
         return;
       }
 
-      // --- infer goal from conversation (no args) ---
-
-      if (!trimmed) {
-        const s = state.getState();
-        const globalModel = loadGlobalModel();
-        const sessionModel = ctx.model;
-        let provider = s?.provider ?? globalModel?.provider ?? sessionModel?.provider ?? 'unknown';
-        let modelId = s?.modelId ?? globalModel?.modelId ?? sessionModel?.id ?? 'unknown';
-
-        const hasConversation = !s?.active && hasUserMessages(ctx);
-        if (!hasConversation) {
-          ctx.ui.notify(
-            'No conversation history found. Use /supervise <goal> to set an explicit goal.',
-            'warning'
-          );
+      if (sub === '' || sub === 'status') {
+        if (!enabled) {
+          ctx.ui.notify('Ledger is off. Use /ledger on to start.', 'info');
           return;
         }
-
-        if (!s) {
-          const apiKey = await ctx.modelRegistry.getApiKeyForProvider(provider);
-          if (!apiKey) {
-            ctx.ui.notify(
-              `No API key for "${provider}/${modelId}" — pick a model with an available key.`,
-              'warning'
-            );
-            const picked = await pickModel(ctx, provider, modelId);
-            if (!picked) return;
-            provider = picked.provider;
-            modelId = picked.id;
-          }
-        }
-
-        updateUI(ctx, widgetState, state.getState(), { type: 'inferring' });
-        const inferred = await inferOutcome(ctx, provider, modelId);
-        updateUI(ctx, widgetState, state.getState());
-
-        if (!inferred) {
-          ctx.ui.notify(
-            'Could not infer goal from conversation. Use /supervise <goal> to set an explicit goal.',
-            'warning'
-          );
-          return;
-        }
-
-        state.start(inferred, provider, modelId);
-        updateUI(ctx, widgetState, state.getState());
-
-        if (ctx.isIdle()) {
-          pi.sendUserMessage(`Please start working on this goal: ${inferred}`, {
-            deliverAs: 'followUp',
-          });
-        }
-
-        ctx.ui.notify(`Supervisor active: "${truncateForNotify(inferred, 25)}"`, 'info');
+        const { text, line } = await currentStatus(ctx);
+        ctx.ui.setStatus(STATUS_KEY, line);
+        ctx.ui.notify(`${line}\n${statusDetail(text)}`, 'info');
         return;
       }
 
-      // Resolve model settings
-      const existing = state.getState();
-      const globalModel = loadGlobalModel();
-      const sessionModel = ctx.model;
-      let provider =
-        existing?.provider ?? globalModel?.provider ?? sessionModel?.provider ?? 'unknown';
-      let modelId = existing?.modelId ?? globalModel?.modelId ?? sessionModel?.id ?? 'unknown';
-
-      if (state.isActive() && existing) {
-        const appendedOutcome = `${existing.outcome}. Additionally: ${trimmed}`;
-        state.updateOutcome(appendedOutcome);
-        updateUI(ctx, widgetState, state.getState());
-
-        ctx.ui.notify(
-          `Supervisor goal expanded: "${truncateForNotify(trimmed, 30)}" added to active supervision.`,
-          'info'
-        );
-        return;
-      }
-
-      if (!existing) {
-        const apiKey = await ctx.modelRegistry.getApiKeyForProvider(provider);
-        if (!apiKey) {
-          ctx.ui.notify(
-            `No API key for "${provider}/${modelId}" — pick a model with an available key.`,
-            'warning'
-          );
-          const picked = await pickModel(ctx, provider, modelId);
-          if (!picked) return;
-          provider = picked.provider;
-          modelId = picked.id;
-        }
-      }
-
-      state.start(trimmed, provider, modelId);
-      updateUI(ctx, widgetState, state.getState());
-
-      if (ctx.isIdle()) {
-        pi.sendUserMessage(`Please start working on this goal: ${trimmed}`, {
-          deliverAs: 'followUp',
-        });
-      }
-
-      ctx.ui.notify(`Supervisor active: "${truncateForNotify(trimmed, 25)}"`, 'info');
+      ctx.ui.notify('Usage: /ledger [status] | on | off | metrics', 'warning');
     },
   });
 
-  // ---- /review: ask for a review now (ledger mode) ----
+  // ---- /review ----
 
   pi.registerCommand('review', {
-    description: 'Ledger mode: review the model now (/review [note for the reviewer])',
+    description: 'Review the model now (/review [note for the reviewer])',
     handler: async (args, ctx) => {
-      if (!isLedgerMode(ledgerConfig)) {
-        ctx.ui.notify('/review is only available in ledger mode.', 'warning');
+      if (!enabled) {
+        ctx.ui.notify('Ledger is off. Use /ledger on first.', 'warning');
         return;
       }
-      if (!ledgerConfig.reviewer.triggers.onCommand) {
-        ctx.ui.notify('/review is disabled in supervisor-config.json.', 'warning');
-        return;
-      }
-      const note = args?.trim() || undefined;
-      if (!ledger.startReview(ctx, ledgerConfig, 'command', note)) {
+      if (!ledger.startReview(ctx, config, 'command', args?.trim() || undefined)) {
         ctx.ui.notify('A review is already running.', 'info');
+        return;
       }
+      await refreshAfterWork(ctx);
     },
   });
 
-  // ---- /flag: answer reviewer flags (ledger mode) ----
+  // ---- /flag ----
 
   pi.registerCommand('flag', {
-    description: 'Ledger mode: list flags, or /flag <id> intended|dismiss|send [reason]',
+    description: 'List flags, or /flag <id> close [reason] | send',
     handler: async (args, ctx) => {
-      if (!isLedgerMode(ledgerConfig)) {
-        ctx.ui.notify('/flag is only available in ledger mode.', 'warning');
-        return;
-      }
-      ctx.ui.notify(await flagCommand(args ?? '', ctx, pi, ledger, ledgerConfig), 'info');
-    },
-  });
-
-  // ---- Tool: model can initiate supervision but never modify an active session ----
-
-  pi.registerTool({
-    name: 'start_supervision',
-    label: 'Start Supervision',
-    description:
-      'Activate the supervisor to track the conversation toward a specific outcome. ' +
-      'The supervisor will observe every turn and steer the agent if it drifts. ' +
-      'Once supervision is active it is locked — only the user can change or stop it. ' +
-      'Uses the global config model or active chat model (model cannot be specified).',
-    parameters: Type.Object({
-      outcome: Type.String({
-        description:
-          'The desired end-state to supervise toward. Be specific and measurable ' +
-          "(e.g. 'Implement JWT auth with refresh tokens and full test coverage').",
-      }),
-    }),
-    execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
-      const text = (msg: string) => ({
-        content: [{ type: 'text' as const, text: msg }],
-        details: undefined,
-      });
-
-      return text(await startSupervisionFromModel(params.outcome, ctx));
+      ctx.ui.notify(await ledger.flagCommand(args ?? '', ctx), 'info');
+      await refreshStatus(ctx);
     },
   });
 }
