@@ -117,12 +117,12 @@ The thinking text streams naturally into multiple lines. When supervision ends o
 
 **Analysis triggers:**
 
-| When                          | Why                                              |
-| ----------------------------- | ------------------------------------------------ |
+| When                              | Why                                              |
+| --------------------------------- | ------------------------------------------------ |
 | Agent goes idle (`agent_settled`) | Critical decision point — must choose done/steer |
-| After we steered              | Verify the steer worked                          |
-| Mid-run safety valve          | Catch runaway drift during long runs             |
-| Tool errors detected          | If agent hits an error, we check                 |
+| After we steered                  | Verify the steer worked                          |
+| Mid-run safety valve              | Catch runaway drift during long runs             |
+| Tool errors detected              | If agent hits an error, we check                 |
 
 The supervisor only intervenes when it has high confidence the agent is off track. It trusts the agent to make progress and only steps in when necessary.
 
