@@ -1,18 +1,30 @@
-// src/ledger/checks.ts
-//
-// Deterministic checks for ledger mode. Pure functions plus small file I/O.
-// No Pi imports: compiles and tests on its own.
-//
-//  D1/D2  parseLedgerLine, ledgerClaimMismatch
-//  D3     lockedSectionsChanged
-//  D4     snapshotFiles, diffSnapshots  (model-file snapshot at turn start, diff at turn end)
-//  D5     cjkRatio
-//  all LLM findings: verifyQuote, locInHunks
-//  input: buildLedgerBlock, renderHunks
+/**
+ * The per-turn monitor: deterministic checks, no model call.
+ *
+ *  D1/D2  the reply's "Ledger:" line exists and matches whether MEMENTO.md changed
+ *  D3     Acceptance and Checks are append-only
+ *  D4     model-file snapshot at turn start, diff at turn end (input for the reviewer)
+ *  D5     language drift (CJK characters in the reply or the ledger)
+ *
+ * Also computes the status line from the ledger (Acceptance, flags, whether
+ * the ledger kept up).
+ *
+ * D1 and D2 steer with fixed templates, never twice for the same ledger state;
+ * everything else is a notice. Also home to the file and quote helpers the
+ * reviewer uses. Pure functions plus small file I/O; no Pi imports.
+ */
 
 import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+
+/** Ledger headings whose existing lines may not change. */
+export const LOCKED_HEADINGS = ['Acceptance', 'Checks'];
+const CJK_RATIO_MAX = 0.01;
+
+export function hashText(text: string): string {
+  return createHash('sha256').update(text, 'utf8').digest('hex').slice(0, 16);
+}
 
 // ---------- D1/D2: the agent's "Ledger:" line ----------
 
@@ -40,10 +52,6 @@ export function ledgerClaimMismatch(line: LedgerLine, fileChanged: boolean | nul
   if (line.claimsChange && !fileChanged) return 'LEDGER_CLAIMED_NO_CHANGE';
   if (!line.claimsChange && fileChanged) return 'LEDGER_CHANGED_UNCLAIMED';
   return null;
-}
-
-export function hashText(text: string): string {
-  return createHash('sha256').update(text, 'utf8').digest('hex').slice(0, 16);
 }
 
 // ---------- D3: locked (append-only) sections ----------
@@ -272,17 +280,6 @@ export function renderHunks(d: SnapshotDiff, maxChars = 20_000): string {
   return text;
 }
 
-/** True if "file:line" falls inside a hunk's new-line range (or file matches with no line). */
-export function locInHunks(loc: string, hunks: Hunk[]): boolean {
-  const m = /^(.+?)(?::(\d+))?$/.exec(loc.trim());
-  if (!m) return false;
-  const file = m[1].replace(/\\/g, '/');
-  const line = m[2] ? Number(m[2]) : null;
-  return hunks.some(
-    (h) => h.file === file && (line === null || (line >= h.newStart && line <= h.newEnd))
-  );
-}
-
 // ---------- D5: language drift ----------
 
 export function cjkRatio(text: string): number {
@@ -303,44 +300,244 @@ export function verifyQuote(quote: string, haystack: string): boolean {
   return normalizeWs(haystack).includes(q);
 }
 
-// ---------- [Ledger File] block ----------
+// ---------- the turn ----------
 
-export interface LedgerBlock {
-  text: string;
-  content: string | null;
-  hash: string | null;
-  changedSincePrevious: boolean | null;
+export type FindingKind =
+  | 'LEDGER_LINE_MISSING'
+  | 'LEDGER_CLAIMED_NO_CHANGE'
+  | 'LEDGER_CHANGED_UNCLAIMED'
+  | 'LOCKED_SECTION_EDITED'
+  | 'LANGUAGE_DRIFT';
+
+export interface Finding {
+  kind: FindingKind;
+  detail: string;
 }
 
-export async function buildLedgerBlock(opts: {
-  cwd: string;
-  file?: string;
-  previousHash?: string | null;
-  maxChars?: number;
-}): Promise<LedgerBlock> {
-  const file = path.resolve(opts.cwd, opts.file ?? 'MEMENTO.md');
-  const maxChars = opts.maxChars ?? 8000;
-  let content: string;
-  try {
-    content = await fs.readFile(file, 'utf8');
-  } catch {
-    return {
-      text: `[Ledger File]\npath: ${file}\nstatus: NOT FOUND\n`,
-      content: null,
-      hash: null,
-      changedSincePrevious: null,
-    };
+/** Steer templates (brief 5.4). The model never writes steers; these are the only steers. */
+export const STEER_TEMPLATES: Partial<Record<FindingKind, string>> = {
+  LEDGER_LINE_MISSING:
+    'Ledger check: end the turn with a "Ledger:" line stating what changed in MEMENTO.md, or "Ledger: unchanged".',
+  LEDGER_CLAIMED_NO_CHANGE:
+    'Ledger check: your Ledger line reports a change but MEMENTO.md is unchanged. Make the edit or correct the line.',
+  LEDGER_CHANGED_UNCLAIMED:
+    'Ledger check: MEMENTO.md changed this turn but the Ledger line says unchanged. State what changed.',
+};
+
+export interface TurnInput {
+  /** Visible text of the last assistant message (no thinking, no tool output). */
+  assistantText: string;
+  /** MEMENTO.md at the start of the turn; null if absent; undefined if unknown. */
+  ledgerBefore: string | null | undefined;
+  /** MEMENTO.md now; null if absent. */
+  ledgerAfter: string | null;
+  /** Model-file changes made during the turn. */
+  modelDiff: SnapshotDiff | null;
+}
+
+/** Lines added to `after` that were not in `before` (order-insensitive, good enough for prose). */
+export function addedLines(before: string | null | undefined, after: string | null): string[] {
+  if (!after) return [];
+  const old = new Set((before ?? '').split(/\r?\n/));
+  return after.split(/\r?\n/).filter((l) => l.trim().length > 0 && !old.has(l));
+}
+
+export function evaluateTurn(input: TurnInput): Finding[] {
+  const findings: Finding[] = [];
+  const ledgerExists = input.ledgerAfter !== null || (input.ledgerBefore ?? null) !== null;
+
+  // D1, D2: only meaningful when the project keeps a ledger.
+  if (ledgerExists) {
+    const line = parseLedgerLine(input.assistantText);
+    if (!line.present) {
+      findings.push({ kind: 'LEDGER_LINE_MISSING', detail: 'no "Ledger:" line in the reply' });
+    } else {
+      const changed =
+        input.ledgerBefore === undefined
+          ? null
+          : hashText(input.ledgerBefore ?? '') !== hashText(input.ledgerAfter ?? '');
+      const mismatch = ledgerClaimMismatch(line, changed);
+      if (mismatch) findings.push({ kind: mismatch, detail: `Ledger: ${line.raw}` });
+    }
   }
-  const hash = hashText(content);
-  const changed = opts.previousHash == null ? null : hash !== opts.previousHash;
-  const truncated = content.length > maxChars;
-  const body = truncated ? content.slice(0, maxChars) : content;
-  const header = [
-    '[Ledger File]',
-    `path: ${file}`,
-    `hash: ${hash}`,
-    `changed since previous turn: ${changed === null ? 'unknown' : changed ? 'yes' : 'no'}`,
-    truncated ? `content (first ${maxChars} chars):` : 'content:',
-  ].join('\n');
-  return { text: `${header}\n${body.trimEnd()}\n`, content, hash, changedSincePrevious: changed };
+
+  // D3: append-only sections.
+  if (input.ledgerBefore && input.ledgerAfter) {
+    for (const heading of lockedSectionsChanged(
+      input.ledgerBefore,
+      input.ledgerAfter,
+      LOCKED_HEADINGS
+    )) {
+      findings.push({ kind: 'LOCKED_SECTION_EDITED', detail: `## ${heading}` });
+    }
+  }
+
+  // D5: language drift in the reply and in what was added to the ledger.
+  const ledgerAdded = addedLines(input.ledgerBefore, input.ledgerAfter).join('\n');
+  for (const [where, text] of [
+    ['reply', input.assistantText],
+    ['MEMENTO.md', ledgerAdded],
+  ] as const) {
+    const ratio = cjkRatio(text);
+    if (ratio > CJK_RATIO_MAX) {
+      findings.push({
+        kind: 'LANGUAGE_DRIFT',
+        detail: `${where}: ${(ratio * 100).toFixed(1)}% CJK characters`,
+      });
+    }
+  }
+
+  return findings;
+}
+
+export interface RoutedFindings {
+  /** At most one templated steer for this turn. */
+  steer: { kind: FindingKind; text: string; key: string } | null;
+  notices: Finding[];
+  /** Steers suppressed because the same (kind, ledger hash) was already sent. */
+  suppressedSteers: number;
+}
+
+/**
+ * Route findings. Kinds with a steer template steer once per (kind, ledger
+ * hash); everything else is a notice.
+ */
+export function routeFindings(
+  findings: Finding[],
+  opts: { steerHistory: string[]; ledgerHash: string | null }
+): RoutedFindings {
+  const out: RoutedFindings = { steer: null, notices: [], suppressedSteers: 0 };
+  for (const f of findings) {
+    const template = STEER_TEMPLATES[f.kind];
+    if (template) {
+      const key = `${f.kind}:${opts.ledgerHash ?? 'none'}`;
+      if (opts.steerHistory.includes(key) || out.steer) {
+        out.suppressedSteers++;
+        continue;
+      }
+      out.steer = { kind: f.kind, text: template, key };
+    } else {
+      out.notices.push(f);
+    }
+  }
+  return out;
+}
+
+// ---------- status line ----------
+//
+// Computed from the ledger and the stored state, never judged:
+//
+//   Acceptance 1/3 passed · 2 open flags · ledger current
+//
+// An Acceptance item is a bullet with an id under "## Acceptance" ("- AC1: …").
+// It counts as passed when the last status line for that id, anywhere in the
+// ledger, says passed and cites a run id ("AC1 status: passed (R12)").
+
+export type AcceptanceStatus = 'open' | 'passed' | 'failed';
+
+export interface AcceptanceItem {
+  id: string;
+  text: string;
+  status: AcceptanceStatus;
+  /** Run id cited by the last status line, if any. */
+  run: string | null;
+}
+
+export interface AcceptanceSummary {
+  /** False when the ledger has no Acceptance section. */
+  present: boolean;
+  items: AcceptanceItem[];
+}
+
+const ITEM_RE = /^\s*[-*]\s+([A-Za-z]+\d+)\s*:\s*(.*)$/;
+const STATUS_RE = /\b([A-Za-z]+\d+)\s+status\s*:\s*(\w+)(.*)$/;
+const RUN_RE = /\bR\d+\b/;
+
+export function acceptanceSummary(md: string | null): AcceptanceSummary {
+  if (!md) return { present: false, items: [] };
+  const sections = splitSections(md);
+  const heading = [...sections.keys()].find((h) => /^acceptance\b/i.test(h));
+  if (!heading) return { present: false, items: [] };
+
+  const items: AcceptanceItem[] = [];
+  for (const line of sections.get(heading)!) {
+    const m = ITEM_RE.exec(line);
+    if (m && !/^status\b/i.test(m[2])) {
+      items.push({ id: m[1], text: m[2].trim(), status: 'open', run: null });
+    }
+  }
+
+  const byId = new Map(items.map((i) => [i.id.toLowerCase(), i]));
+  for (const line of md.split(/\r?\n/)) {
+    const m = STATUS_RE.exec(line);
+    const item = m && byId.get(m[1].toLowerCase());
+    if (!item) continue;
+    const word = m[2].toLowerCase();
+    const run = RUN_RE.exec(m[3])?.[0] ?? null;
+    item.run = run;
+    // "passed" without a run id is a claim, not a result.
+    item.status = word === 'passed' && run ? 'passed' : word === 'failed' ? 'failed' : 'open';
+  }
+  return { present: true, items };
+}
+
+/** What the status line needs from the plugin's state. */
+export interface StatusState {
+  turn: number;
+  lastTurnFindings: FindingKind[];
+  flags: { flags: Array<{ status: string }> };
+}
+
+const LEDGER_BEHIND: FindingKind[] = [
+  'LEDGER_LINE_MISSING',
+  'LEDGER_CLAIMED_NO_CHANGE',
+  'LEDGER_CHANGED_UNCLAIMED',
+];
+
+function plural(n: number, word: string): string {
+  return `${n} ${word}${n === 1 ? '' : 's'}`;
+}
+
+export function statusLine(input: {
+  ledgerText: string | null;
+  ledgerName: string;
+  state: StatusState;
+  reviewing?: boolean;
+}): string {
+  const { ledgerText, ledgerName, state } = input;
+  const parts: string[] = [];
+
+  const acc = acceptanceSummary(ledgerText);
+  if (!acc.present || acc.items.length === 0) parts.push('no Acceptance');
+  else {
+    const passed = acc.items.filter((i) => i.status === 'passed').length;
+    const failed = acc.items.filter((i) => i.status === 'failed').length;
+    parts.push(
+      `Acceptance ${passed}/${acc.items.length} passed` + (failed ? `, ${failed} failed` : '')
+    );
+  }
+
+  const open = state.flags.flags.filter((f) => f.status === 'open').length;
+  parts.push(plural(open, 'open flag'));
+
+  if (ledgerText === null) parts.push(`no ${ledgerName}`);
+  else if (state.turn === 0) parts.push('ledger not checked yet');
+  else if (state.lastTurnFindings.some((k) => LEDGER_BEHIND.includes(k)))
+    parts.push('ledger behind');
+  else if (state.lastTurnFindings.includes('LOCKED_SECTION_EDITED'))
+    parts.push('locked section edited');
+  else parts.push('ledger current');
+
+  if (input.reviewing) parts.push('reviewing…');
+  return parts.join(' · ');
+}
+
+/** Multi-line detail for /ledger status. */
+export function statusDetail(ledgerText: string | null): string {
+  const acc = acceptanceSummary(ledgerText);
+  if (!acc.present) return 'The ledger has no Acceptance section.';
+  if (acc.items.length === 0) return 'The Acceptance section has no items (e.g. "- AC1: …").';
+  return acc.items
+    .map((i) => `${i.id} ${i.status}${i.run ? ` (${i.run})` : ''}: ${i.text}`)
+    .join('\n');
 }

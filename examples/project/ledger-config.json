@@ -3,55 +3,17 @@
   "reviewer": {
     "model": "anthropic/claude-opus-4-8",
     "fallbackModel": "zai/glm-5.3",
-    "thinking": "high",
-    "maxTokens": 16000,
-    "triggers": {
-      "onRegisterChange": true,
-      "onBreakpoint": true,
-      "beforeCompaction": true,
-      "onCommand": true,
-      "idleAfterModelEditsEveryNTurns": 6
-    },
-    "inputs": [
-      "model_spec",
-      "model_register",
-      "ledger",
-      "model_files",
-      "model_edits",
-      "agent_summary"
-    ],
-    "maxModelFileChars": 120000
+    "thinking": "high"
   },
-  "turnModel": null,
   "files": {
     "ledger": "MEMENTO.md",
-    "ledgerArchive": "MEMENTO.archive.md",
     "spec": "MODEL_SPEC.md",
-    "register": ".pi/model-register.md",
-    "flags": ".pi/FLAGS.md",
-    "runs": ".pi/runs.jsonl",
-    "modelFiles": ["R/**/*.R", "src/**/*.{R,stan,clj,py}", "models/**/*"],
-    "ignore": ["**/node_modules/**", "**/.git/**", "**/renv/**"]
-  },
-  "monitor": {
-    "lockedHeadings": ["Acceptance", "Checks"],
-    "cjkRatioMax": 0.01,
-    "runCommands": ["Rscript", "cmdstan", "python", "clj", "make"]
-  },
-  "routing": {
-    "autoSteer": ["LEDGER_LINE_MISSING", "LEDGER_CLAIMED_NO_CHANGE", "LEDGER_CHANGED_UNCLAIMED"],
-    "notifyOnly": ["LOCKED_SECTION_EDITED", "LANGUAGE_DRIFT", "INJECTION", "FLAG", "TURN_FINDING"],
-    "neverRepeatSteer": true
-  },
-  "compaction": {
-    "annotateSummaries": true
+    "modelFiles": ["*.{R,stan}", "R/**/*.R", "src/**/*.{R,stan,clj,py}", "models/**/*"],
+    "ignore": ["**/node_modules/**", "**/.git/**", "**/renv/**", "**/archive/**"]
   },
   "_notes": {
-    "reviewer.model": "Prefer a capable model from a different family than the working agent; fallback is used on auth/availability errors. null = the chat model; /ledger model sets this key.",
-    "turnModel": "Set to a cheap model id to enable the optional per-turn LLM ledger check (prompts/LEDGER_TURN.md). null = code-only monitor.",
-    "routing.autoSteer": "Deterministic findings only. Reviewer flags never auto-steer; use /flag <id> send.",
-    "reviewer.triggers.onBreakpoint": "Fires when the ledger's Next item changes or a Checks item resolves.",
-    "compaction.annotateSummaries": "After each compaction, the reviewer model checks the summary against MEMENTO.md and MODEL_SPEC.md and adds a separate note listing stale statements. The summary itself is never changed.",
-    "autoEnable": "Switch the ledger on at session start when files.ledger exists. /ledger on|off overrides this for the session."
+    "autoEnable": "Switch the ledger on at session start when files.ledger exists. /ledger on|off overrides this for the session.",
+    "reviewer.model": "Prefer a capable model from a different family than the working agent. null = the chat model. The fallback is used when the primary is unavailable or the call fails.",
+    "files.modelFiles": "What the reviewer reads and the monitor diffs. Archived code is ignored."
   }
 }

@@ -4,9 +4,15 @@
 
 - Split out of the pi-supervisor fork as a standalone extension with one job: keep the ledger and the model honest.
 - Removed goal supervision entirely (goal analysis, reframe tiers, `done`, idle steering, goal inference, the status widget, the `start_supervision` tool, the fabric provider, subagent waiting, and the algorithmic compaction used to build the supervisor's input).
-- Removed `/supervise` and the `mode` switch. Commands are now `/ledger [status] | on | off | register | metrics | model`, `/review` and `/flag`.
+- Removed `/supervise` and the `mode` switch. Commands are now `/ledger [status] | on | off | metrics`, `/review [note]` and `/flag [<id> close [reason] | send]`.
 - Added a status line computed from the ledger: `Acceptance 1/3 passed · 2 open flags · ledger current`.
 - Config moves to `.pi/ledger-config.json`; `supervisor-config.json` is still read when the new file is absent.
+- Simplified to seven source files. Removed the concept register (`/ledger register`), the run log (`runs.jsonl`), the optional per-turn model, the injection check, the model picker (`/ledger model`) and the configurable review triggers.
+- The reviewer runs on three fixed triggers: a model or spec edit, before compaction, and `/review`. It reads the spec fresh and sees open and closed flags; repeats are matched by spec concept, evidence or location.
+- `/flag <id> close [reason]` replaces `intended` and `dismiss` (kept as aliases).
+- The post-compaction note lists summary statements that differ from the ledger, without assuming the ledger is current.
+- Archived code (`**/archive/**`) is ignored; top-level `*.R` and `*.stan` files are model files by default.
+- Sessions saved by the fork's ledger mode load and keep their flags.
 
 ## pi-supervisor history (upstream, before the split)
 

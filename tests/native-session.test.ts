@@ -13,7 +13,7 @@ import {
   getCurrentSystemPrompt,
   getCurrentTools,
 } from '@earendil-works/pi-ai/compat';
-import { ModelSession } from '../src/ledger/model-session.js';
+import { ModelSession } from '../src/model-session.js';
 
 it('inherits the parent native provider runtime for real SDK supervisor sessions', async () => {
   const root = mkdtempSync(join(tmpdir(), 'pi1-supervisor-'));

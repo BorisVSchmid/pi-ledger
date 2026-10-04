@@ -1,33 +1,32 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { callJson, parseModelRef, sessions } from '../src/model-session.js';
 
 const behaviour: Record<string, { start: boolean; replies: Array<string | null> }> = {};
 const started: string[] = [];
 const disposed: string[] = [];
 
-vi.mock('../src/ledger/model-session.js', () => ({
-  ModelSession: class {
-    private key = '';
-    async ensureStarted(
-      _ctx: unknown,
-      provider: string,
-      modelId: string,
-      _sp: string,
-      thinking?: string
-    ) {
-      this.key = `${provider}/${modelId}`;
-      started.push(`${this.key}:${thinking ?? 'none'}`);
-      return behaviour[this.key]?.start ?? false;
-    }
-    async prompt() {
-      return behaviour[this.key]?.replies.shift() ?? null;
-    }
-    dispose() {
-      disposed.push(this.key);
-    }
-  },
-}));
+class FakeSession {
+  private key = '';
+  async ensureStarted(
+    _ctx: unknown,
+    provider: string,
+    modelId: string,
+    _sp: string,
+    thinking?: string
+  ) {
+    this.key = `${provider}/${modelId}`;
+    started.push(`${this.key}:${thinking ?? 'none'}`);
+    return behaviour[this.key]?.start ?? false;
+  }
+  async prompt() {
+    return behaviour[this.key]?.replies.shift() ?? null;
+  }
+  dispose() {
+    disposed.push(this.key);
+  }
+}
 
-import { callJson, parseModelRef } from '../src/ledger/model-call.js';
+sessions.create = () => new FakeSession() as any;
 
 const ctx: any = { model: undefined, signal: undefined };
 const opts = {

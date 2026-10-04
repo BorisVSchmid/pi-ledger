@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { acceptanceSummary, statusDetail, statusLine } from '../src/ledger/status.js';
-import { emptyLedgerState } from '../src/ledger/state.js';
+import { acceptanceSummary, statusDetail, statusLine } from '../src/monitor.js';
+import { emptyLedgerState } from '../src/runtime.js';
 
 const LEDGER = `# Vole fit
 
@@ -41,7 +41,7 @@ describe('statusLine', () => {
   const state = () => {
     const s = emptyLedgerState();
     s.turn = 3;
-    s.register.flags.push(
+    s.flags.flags.push(
       { id: 'F1', status: 'open' } as never,
       { id: 'F2', status: 'open' } as never,
       { id: 'F3', status: 'dismissed' } as never

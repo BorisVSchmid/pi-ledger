@@ -1,8 +1,9 @@
 # Model specification (human-owned; the agent proposes changes in its reply)
 
 One entry per process. State the abstraction once, name what is excluded, and
-give the tag used in code (`# @concept P1`). The supervisor seeds its register
-from this file and flags code that departs from it.
+give the tag used in code (`# @concept P1`). The reviewer reads this file fresh
+at every review, names concepts by these headings, and flags code that departs
+from it.
 
 ## P1 Transmission
 

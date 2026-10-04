@@ -4,8 +4,8 @@ pi-ledger is derived from pi-supervisor, not a mode of it. It started as a
 "ledger mode" inside a fork of pi-supervisor and was split out on 2026-10-04
 into a standalone extension with one job, integrity, after the goal logic was
 removed. Almost every mechanism in it has a visible ancestor. No code was
-copied from the projects below except pi-supervisor itself; `checks.ts`,
-`register.ts` and `status.ts` are new. Check each project's licence before
+copied from the projects below except pi-supervisor itself; `monitor.ts`,
+`reviewer.ts` and `flags.ts` are new. Check each project's licence before
 copying any text or code from it.
 
 ## Code lineage
@@ -13,9 +13,8 @@ copying any text or code from it.
 - **monotykamary/pi-supervisor** (MIT), itself a fork of **tintinweb/pi-supervisor**.
   pi-ledger is derived from it and keeps its infrastructure: a second model
   in a separate in-memory Pi session that borrows the parent session's
-  provider auth; state persisted in the session file; the hook wiring; the
-  model picker; project overrides of built-in prompts; templated user-voice
-  steering. It drops the goal semantics entirely (goal analysis, reframe
+  provider auth; state persisted in the session file; the hook wiring;
+  templated user-voice steering. It drops the goal semantics entirely (goal analysis, reframe
   tiers, `done`, idle steering, `/supervise`, goal inference, and the
   algorithmic input building that served the goal supervisor). The MIT
   notice in `LICENSE` is upstream's.
@@ -34,12 +33,13 @@ copying any text or code from it.
   state, editing a current-state note section by section rather than
   rewriting it, and resetting from the note instead of summarising. Our
   "artefacts over narration" rule and reset-from-ledger practice follow this.
-- **davebcn87/pi-autoresearch** — a tool-written, append-only run log that the
-  agent cannot edit; re-reading files from disk after compaction. Our
-  `runs.jsonl` and run recorder follow this.
+- **davebcn87/pi-autoresearch** — re-reading files from disk after compaction
+  rather than trusting the summary. Our post-compaction note follows this. An
+  earlier version also copied its tool-written run log; it was removed as
+  unused.
 - **OthmanAdi/planning-with-files** — re-injecting the plan each turn and
   hashing an approved plan so tampering blocks injection. Our append-only
-  locked sections and the optional anchor re-injection follow this.
+  locked sections follow this; the re-injection was not adopted.
 - **lhl/pi-multiloop** — compound verifiers, and keeping work counters out of
   the agent's view so they are not read as a context gauge.
 - **thebabush/pi-memento**, **ttttmr/pi-context**, **uriafranko/pi-rollback** —
@@ -73,8 +73,8 @@ happened and whether the model is internally consistent. Consequences:
   claim contradicting the file hash). Everything a model judges goes to the
   human as a question and steers only on `/flag send`.
 - Different input: the session goal and status sections are dropped; the
-  ledger, the spec, model-file diffs and a register the plugin maintains
-  across turns are added.
+  ledger, the spec (read fresh each review), the model files with their diffs
+  and the open and closed flags are added.
 - Different cadence: a code-only monitor every turn, and a sparse reviewer
   that may be a different, more capable model, run in a fresh session with
   extended thinking.
@@ -100,8 +100,8 @@ kept the note, and it says so.
 pi-ledger adopts the categories and the evidence rule almost unchanged and
 supplies the missing runtime: the agent's `Ledger:` line is verified against
 the file hash each turn; Acceptance and Checks are append-only, with edits
-flagged; results must cite run ids from an append-only log the agent cannot
-edit; superseded claims move to an archive with a one-line tombstone instead
+flagged; an Acceptance item counts as passed only when its status line cites
+a run id; superseded claims move to an archive with a one-line tombstone instead
 of staying crossed out in the live file. The skill remains the agent-side
 half: it is what tells the agent how to write and resume from the ledger.
 pi-ledger does not reimplement its handoff protocol.
@@ -136,8 +136,8 @@ than rewrite) and none of the mechanism. It never summarises, rolls over or
 touches the context window, and it has no view on when a window should end.
 The two are complementary and can run together: posthorse owns compaction
 and rollover and writes handoffs; pi-ledger checks the content of the note
-and the coherence of the model. Two rules when both are installed: ledger
-mode's `beforeCompaction` check should run before posthorse's rollover, and
+and the coherence of the model. Two rules when both are installed: pi-ledger's
+review before compaction should start before posthorse's rollover, and
 pi-ledger must never return a compaction result from
 `session_before_compact`.
 
@@ -149,10 +149,8 @@ append-only JSONL log that its own tools write. Hooks before and after each
 run can steer the agent, and after compaction it re-prompts the agent to
 re-read its files from disk.
 
-pi-ledger borrows exactly one thing: a run log written by the tooling,
-not by the agent, that the agent cannot edit. It runs nothing, measures
-nothing and decides nothing; `runs.jsonl` exists so that Observed entries can
-cite a run id that the recorder, not the agent, produced. Both can be active,
+pi-ledger borrows the habit of going back to the files after compaction.
+It runs nothing, measures nothing and decides nothing. Both can be active,
 but then autoresearch's living document and `MEMENTO.md` both claim to be the
 state of the work. Either point autoresearch's document at the ledger or
 tell the reviewer which one is authoritative.
@@ -188,10 +186,10 @@ auto-continuation. The two do not conflict.
 
 These own `session_before_compact` and replace Pi's default summary with
 their own structured state. pi-ledger does not compact. Its only use of
-that hook, when `beforeCompaction` is enabled, is to start a background
+that hook is to start a background
 review of the model on artefacts, which does not delay compaction; after
 compaction it may add a separate note listing statements in the summary that
-the ledger has since retired, leaving the summary unchanged. It must not return a compaction result from the hook; the
+differ from the ledger, leaving the summary unchanged. It must not return a compaction result from the hook; the
 compaction extension does that. Only one extension should own compaction in
 a session, and that extension is not pi-ledger.
 
@@ -199,7 +197,7 @@ a session, and that extension is not pi-ledger.
 
 - Zhang et al., [_Agentic Context Engineering_](https://arxiv.org/abs/2510.04618)
   (2025): incremental delta updates; monolithic rewrites collapse context →
-  the register and ledger are edited, never regenerated.
+  the ledger is edited, never regenerated.
 - Laban et al., [_LLMs Get Lost in Multi-Turn Conversation_](https://arxiv.org/abs/2505.06120)
   (2025): early assumptions persist; consolidated restarts recover → reset
   from the ledger.

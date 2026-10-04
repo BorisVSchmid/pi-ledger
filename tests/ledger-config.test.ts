@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { defaultConfig, loadLedgerConfig, saveReviewerModel } from '../src/ledger/config.js';
+import { defaultConfig, loadLedgerConfig } from '../src/config.js';
+import { snapshotFiles } from '../src/monitor.js';
 
 describe('ledger config', () => {
   let cwd: string;
@@ -34,22 +35,22 @@ describe('ledger config', () => {
 
   it('merges nested keys over defaults', () => {
     writeProject({
-      reviewer: { model: 'anthropic/x', triggers: { onBreakpoint: false } },
+      reviewer: { model: 'anthropic/x', thinking: 'low' },
       files: { modelFiles: ['stan/*.stan'] },
     });
     const config = loadLedgerConfig(cwd, agentDir);
     expect(config.reviewer.model).toBe('anthropic/x');
-    expect(config.reviewer.triggers.onBreakpoint).toBe(false);
-    expect(config.reviewer.triggers.onRegisterChange).toBe(true);
+    expect(config.reviewer.thinking).toBe('low');
+    expect(config.reviewer.fallbackModel).toBeNull();
     expect(config.files.modelFiles).toEqual(['stan/*.stan']);
     expect(config.files.ledger).toBe('MEMENTO.md');
   });
 
   it('project config wins over the global file', () => {
-    writeGlobal({ monitor: { cjkRatioMax: 0.5 } });
+    writeGlobal({ files: { ledger: 'NOTES.md' } });
     writeProject({ autoEnable: false });
     expect(loadLedgerConfig(cwd, agentDir).autoEnable).toBe(false);
-    expect(loadLedgerConfig(cwd, agentDir).monitor.cjkRatioMax).toBe(0.01);
+    expect(loadLedgerConfig(cwd, agentDir).files.ledger).toBe('MEMENTO.md');
   });
 
   it('falls back to the global file when the project has none', () => {
@@ -68,10 +69,10 @@ describe('ledger config', () => {
   });
 
   it('ignores wrong types, unknown keys and invalid JSON', () => {
-    writeProject({ mode: 'chaos', reviewer: { maxTokens: 'lots' }, files: { modelFiles: [1] } });
+    writeProject({ mode: 'chaos', reviewer: { thinking: 3 }, files: { modelFiles: [1] } });
     const config = loadLedgerConfig(cwd, agentDir);
     expect('mode' in config).toBe(false);
-    expect(config.reviewer.maxTokens).toBe(16000);
+    expect(config.reviewer.thinking).toBe('high');
     expect(config.files.modelFiles).toEqual(defaultConfig().files.modelFiles);
 
     writeFileSync(join(cwd, '.pi', 'ledger-config.json'), '{ not json');
@@ -79,14 +80,13 @@ describe('ledger config', () => {
     expect(loadLedgerConfig(cwd, agentDir).autoEnable).toBe(false);
   });
 
-  it('saves the reviewer model without touching other keys', () => {
-    writeProject({ autoEnable: false, reviewer: { thinking: 'low' } });
-    const file = saveReviewerModel(cwd, 'anthropic/z');
-    const saved = JSON.parse(readFileSync(file, 'utf-8'));
-    expect(saved).toEqual({
-      autoEnable: false,
-      reviewer: { thinking: 'low', model: 'anthropic/z' },
-    });
-    expect(loadLedgerConfig(cwd, agentDir).reviewer.model).toBe('anthropic/z');
+  it('default model files include top-level R files and skip archives', async () => {
+    mkdirSync(join(cwd, 'R', 'archive'), { recursive: true });
+    writeFileSync(join(cwd, 'model.R'), 'x <- 1\n');
+    writeFileSync(join(cwd, 'R', 'fit.R'), 'y <- 1\n');
+    writeFileSync(join(cwd, 'R', 'archive', 'old.R'), '# @concept P3\n');
+    const { files } = defaultConfig();
+    const snap = await snapshotFiles(cwd, files.modelFiles, 400_000, files.ignore);
+    expect(Object.keys(snap).sort()).toEqual(['R/fit.R', 'model.R']);
   });
 });

@@ -1,9 +1,62 @@
 # pi-ledger: implementation notes
 
 Working notes for `brief/DESIGN_BRIEF.md`. Deliverables 1 to 8 below were built as "ledger
-mode" inside the pi-supervisor fork; the split into the standalone pi-ledger is the first
-section. Older sections keep their original paths (`ledger-mode-brief/`, `examples/ledger-mode/`,
-`/supervise register`), which are now `brief/`, `examples/project/` and `/ledger register`.
+mode" inside the pi-supervisor fork; the split into the standalone pi-ledger and the
+simplification after it come first. Older sections keep their original paths (`ledger-mode-brief/`, `examples/ledger-mode/`,
+`/supervise register`); the first two are now `brief/` and `examples/project/`, the register is gone.
+
+## Simplification (2026-10-04, after the split)
+
+Boris asked whether the plugin could be simpler, taking the PC run's view on what earned its
+complexity. The source went from 16 files in `src/ledger/` and `src/ui/` to seven in `src/`:
+`index.ts`, `config.ts`, `monitor.ts` (was checks, monitor, status), `reviewer.ts` (was
+reviewer, prompts), `flags.ts` (new; the flag half of the old register and flags-file),
+`model-session.ts` (was model-session, model-call) and `runtime.ts` (was runtime, state,
+commands). Defaults taken without asking:
+
+- **Dropped the concept register** (`register.ts`, `/ledger register`, `.pi/model-register.md`,
+  `syncFromSpec`, register edits in the reviewer output). It mostly restated the spec, caused
+  the stale-label and review-loop fixes below, and needed its own merge logic. The reviewer now
+  reads `MODEL_SPEC.md` fresh and names concepts by its current `## P<n>` heading; flags are
+  matched by that P-id (`conceptKey`), by evidence, or by overlapping locations
+  (`LINE_SLACK` = 3). A spec rename therefore needs no migration.
+- **Dropped `runs.jsonl` and the run recorder.** Nothing read it; run ids in the ledger are the
+  agent's own (`R<n>`), checked only by the status line's "passed needs a run id" rule.
+- **Dropped `turnModel`** (the optional per-turn model call) and its prompt. Off by default and
+  never used in a run.
+- **Dropped the injection regex.** It only caught text addressed to "the supervisor"; the
+  reviewer handles that as type 0. Fixture variant 9 now expects no monitor finding.
+- **Dropped the model picker and `/ledger model`** (`src/ui/*`). Set `reviewer.model` in the
+  config. The reviewer falls back to the chat model when unset.
+- **Kept D5 (CJK ratio)** because GLM models drift into Chinese, which was the reason for adding
+  it; it costs a dozen lines.
+- **Triggers fixed in code: edit, before_compaction, command.** `edit` fires when the turn
+  changed a model file or `MODEL_SPEC.md` changed after its first sighting. Breakpoint and
+  backstop triggers, cooldowns and the `triggers` config block are gone. A review cannot
+  trigger another one because a turn without edits never reviews.
+- **`/flag <id> close [reason]`** replaces `intended` and `dismiss`, which were the same action.
+  Both old words still work as aliases. Statuses are `open`, `sent`, `closed`.
+- **Compaction note reworded**: it lists summary statements that *differ* from the ledger and
+  says to check which is current, since the ledger can be behind. The prompt's key is
+  `differs`; replies under the old `stale` key are still accepted.
+- **Model files:** top-level `*.{R,stan}` added to the default `modelFiles`; `**/archive/**`
+  added to `ignore`, and the AGENTS snippet says retired code goes under `archive/` with its
+  `@concept` tags removed.
+- **Config trimmed** to `autoEnable`, `reviewer {model, fallbackModel, thinking}` and
+  `files {ledger, spec, modelFiles, ignore}`. Locked headings, the CJK threshold and the 120k
+  model-file cap are constants. Unknown keys in old configs are ignored.
+- **State:** the session entry names stay (`supervisor-ledger-state`,
+  `supervisor-compaction-note`) and the state is now version 2. `restoreState` migrates a
+  version 1 entry, turning register flags into flat flags (`intended`/`dismissed` → `closed`),
+  so Boris's paused PC session resumes.
+- **Testing seam:** `sessions.create` in `model-session.ts` is injectable, so tests replace the
+  in-memory session without module mocks.
+- Tests: 8 files, 68 pass (the register and flag-fix tests were replaced by
+  `tests/ledger-flags.test.ts`); prettier clean; the offline Pi probe passes.
+
+The sections below describe the plugin before this change. Where they mention the register,
+`runs.jsonl`, `turnModel`, `/ledger model`, `intended|dismiss` or `src/ledger/*` paths, those
+no longer exist.
 
 ## Split into pi-ledger (2026-10-04)
 

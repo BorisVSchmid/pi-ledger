@@ -66,7 +66,7 @@ try {
   await writeFile(
     identityPath,
     `import { AgentSession } from '@earendil-works/pi-coding-agent';
-import { ModelSession } from '${pathToFileURL(join(root, 'src/ledger/model-session.ts')).href}';
+import { ModelSession } from '${pathToFileURL(join(root, 'src/model-session.ts')).href}';
 export default function (pi) {
   pi.on('session_start', (_event, ctx) => { globalThis[Symbol.for('pi1.supervisor.offline')] = { ctx, controller: new ModelSession() }; });
   if (AgentSession !== globalThis[Symbol.for('pi1.workflow.identity')]) throw new Error('Duplicate host constructor');
