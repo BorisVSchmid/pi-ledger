@@ -465,9 +465,10 @@ export class LedgerRuntime {
 
   // ---------- /flag ----------
 
-  /** /flag · /flag <id> · /flag <id> close <reason> · /flag <id> send. Returns the text to show. */
+  /** /flag · /flag <id> · /flag <id> close <reason, 3+ words> · /flag <id> send. Returns the text to show. */
   async flagCommand(args: string, ctx: ExtensionContext, config?: LedgerConfig): Promise<string> {
-    const usage = 'Usage: /flag (list) · /flag <id> · /flag <id> close <reason> · /flag <id> send';
+    const usage =
+      'Usage: /flag (list) · /flag <id> · /flag <id> close <reason, 3+ words> · /flag <id> send';
     const store = this.s.flags;
     const [id, action, ...rest] = args.trim().split(/\s+/).filter(Boolean);
     if (!id || id === 'list') {
@@ -487,7 +488,7 @@ export class LedgerRuntime {
       if (words.length === 0 && ctx.hasUI) {
         const typed = await ctx.ui.input(
           `Why close ${flag.id}? (${oneLineQuestion(flag)})`,
-          'why, in a few words'
+          'why, in at least 3 words'
         );
         words = (typed ?? '').trim().split(/\s+/).filter(Boolean);
         if (words.length === 0) return `${flag.id} not closed: no reason given.`;
