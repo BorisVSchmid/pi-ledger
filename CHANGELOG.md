@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- The ledger file is now `LEDGER.md` (archive `LEDGER.archive.md`); it was `MEMENTO.md`. The format has diverged from ruslanlap/memento, so the old name is not read. A project with only `MEMENTO.md` gets a one-line rename notice at session start; a config that sets `files.ledger` explicitly keeps working.
+
 ## pi-ledger 0.1.0
 
 - Split out of the pi-supervisor fork as a standalone extension with one job: keep the ledger and the model honest.

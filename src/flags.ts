@@ -10,7 +10,7 @@
  */
 
 export interface Side {
-  loc: string; // "file:line[-line]", "MEMENTO.md#D2", "MODEL_SPEC.md#P1"
+  loc: string; // "file:line[-line]", "LEDGER.md#D2", "MODEL_SPEC.md#P1"
   quote: string; // verbatim, verified before storage
 }
 
@@ -68,7 +68,7 @@ export function conceptKey(name: string): string {
 }
 
 const normalizeQuote = (q: string) => q.replace(/\s+/g, ' ').trim().toLowerCase();
-/** "R/herd.R:42" -> "R/herd.R"; "MEMENTO.md#D2" stays. */
+/** "R/herd.R:42" -> "R/herd.R"; "LEDGER.md#D2" stays. */
 const locFile = (loc: string) => loc.trim().replace(/:\d+(?:-\d+)?$/, '');
 
 /**
@@ -165,7 +165,7 @@ export function closeFlag(store: FlagStore, f: Flag, reason?: string): void {
 /** Steer text for /flag <id> send. Templated; the model never writes steers. */
 export function steerTextFor(flag: Flag): string {
   const where = flag.b ? `${flag.a.loc} and ${flag.b.loc}` : flag.a.loc;
-  return `Ledger check: possible inconsistency in ${flag.concept} between ${where}. ${flag.question} Reconcile it, or record the difference as a deliberate decision in MEMENTO.md with the reason.`;
+  return `Ledger check: possible inconsistency in ${flag.concept} between ${where}. ${flag.question} Reconcile it, or record the difference as a deliberate decision in LEDGER.md with the reason.`;
 }
 
 /** The [Flags] block of the reviewer prompt: what was raised already, never truncated. */

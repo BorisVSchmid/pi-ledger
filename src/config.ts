@@ -40,7 +40,7 @@ export function defaultConfig(): LedgerConfig {
     autoEnable: true,
     reviewer: { model: null, fallbackModel: null, thinking: 'high' },
     files: {
-      ledger: 'MEMENTO.md',
+      ledger: 'LEDGER.md',
       spec: 'MODEL_SPEC.md',
       modelFiles: ['*.{R,stan}', 'R/**/*.R', 'src/**/*.{R,stan,clj,py}', 'models/**/*'],
       // Archived code is not part of the model, even if it keeps its @concept tags.
@@ -97,4 +97,14 @@ export function loadLedgerConfig(cwd: string, agentDir: string = getAgentDir()):
     config.reviewer.model = `${String(legacy.provider)}/${String(legacy.modelId)}`;
   }
   return config;
+}
+
+/** The ledger's former name; its format has diverged from the memento skill's, so it is not read. */
+export const LEGACY_LEDGER_FILE = 'MEMENTO.md';
+
+/** A one-line rename hint when only the old ledger file exists; otherwise null. */
+export function legacyLedgerNotice(cwd: string, ledgerName: string): string | null {
+  if (ledgerName === LEGACY_LEDGER_FILE || existsSync(join(cwd, ledgerName))) return null;
+  if (!existsSync(join(cwd, LEGACY_LEDGER_FILE))) return null;
+  return `Ledger: found ${LEGACY_LEDGER_FILE} but no ${ledgerName}. The ledger is now ${ledgerName}; rename the file (and ${LEGACY_LEDGER_FILE.replace('.md', '.archive.md')}) after checking it matches the current template.`;
 }

@@ -9,9 +9,9 @@ import piLedger from '../src/index.js';
 
 type Handler = (event: any, ctx: any) => Promise<unknown> | unknown;
 
-function setup(opts: { memento?: string } = {}) {
+function setup(opts: { ledgerText?: string } = {}) {
   const cwd = mkdtempSync(join(tmpdir(), 'pi-ledger-plugin-'));
-  if (opts.memento !== undefined) writeFileSync(join(cwd, 'MEMENTO.md'), opts.memento);
+  if (opts.ledgerText !== undefined) writeFileSync(join(cwd, 'LEDGER.md'), opts.ledgerText);
   const branch: any[] = [
     {
       type: 'message',
@@ -47,7 +47,8 @@ function setup(opts: { memento?: string } = {}) {
   return { cwd, api, ctx, emit, commands, branch, lastStatus };
 }
 
-const MEMENTO = '# Q\n\n## Acceptance (locked)\n\n- AC1: fits held-out years\n\n## Next\n\n- fit\n';
+const LEDGER_MD =
+  '# Q\n\n## Acceptance (locked)\n\n- AC1: fits held-out years\n\n## Next\n\n- fit\n';
 
 describe('pi-ledger plugin', () => {
   let s: ReturnType<typeof setup>;
@@ -60,7 +61,7 @@ describe('pi-ledger plugin', () => {
   });
 
   it('switches on at session start when the ledger exists and shows the status line', async () => {
-    s = setup({ memento: MEMENTO });
+    s = setup({ ledgerText: LEDGER_MD });
     await s.emit('session_start', { reason: 'startup' });
     expect(s.lastStatus()).toBe('Acceptance 0/1 passed · 0 open flags · ledger not checked yet');
   });
@@ -73,9 +74,9 @@ describe('pi-ledger plugin', () => {
     expect(s.api.sendUserMessage).not.toHaveBeenCalled();
 
     await s.commands.ledger.handler('on', s.ctx);
-    expect(s.lastStatus()).toBe('no Acceptance · 0 open flags · no MEMENTO.md');
+    expect(s.lastStatus()).toBe('no Acceptance · 0 open flags · no LEDGER.md');
 
-    writeFileSync(join(s.cwd, 'MEMENTO.md'), MEMENTO);
+    writeFileSync(join(s.cwd, 'LEDGER.md'), LEDGER_MD);
     await s.commands.ledger.handler('off', s.ctx);
     expect(s.lastStatus()).toBeUndefined();
     // A reload keeps the explicit choice over autoEnable.
@@ -83,8 +84,22 @@ describe('pi-ledger plugin', () => {
     expect(s.lastStatus()).toBeUndefined();
   });
 
+  it('does not read a legacy MEMENTO.md; it suggests the rename instead', async () => {
+    s = setup();
+    writeFileSync(join(s.cwd, 'MEMENTO.md'), LEDGER_MD);
+    await s.emit('session_start', { reason: 'startup' });
+    expect(s.lastStatus()).toBeUndefined();
+    expect(s.ctx.ui.notify).toHaveBeenCalledTimes(1);
+    expect(s.ctx.ui.notify.mock.calls[0][0]).toMatch(/found MEMENTO\.md but no LEDGER\.md/);
+
+    writeFileSync(join(s.cwd, 'LEDGER.md'), LEDGER_MD);
+    s.ctx.ui.notify.mockClear();
+    await s.emit('session_start', { reason: 'reload' });
+    expect(s.ctx.ui.notify).not.toHaveBeenCalled();
+  });
+
   it('runs the monitor after each run: a missing Ledger line steers once, never toward a goal', async () => {
-    s = setup({ memento: MEMENTO });
+    s = setup({ ledgerText: LEDGER_MD });
     await s.emit('session_start', { reason: 'startup' });
     await s.emit('before_agent_start');
     await s.emit('agent_settled');
