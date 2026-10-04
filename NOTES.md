@@ -300,3 +300,21 @@ brief 5.6 at once:
   accepted; the quote must be in the turn or the added model lines, and a ledger quote in the
   ledger. Survivors are `TURN_FINDING` notices (never steers), deduplicated.
 - Tests: 2 in `tests/ledger-fixture.test.ts` (variant 6). Suite: 263 pass.
+
+## Deliverable 8: docs
+
+- README: "Ledger mode" section, `src/ledger/` in the project structure, and the stale
+  `agent_end` reference corrected to `agent_settled`.
+- `examples/ledger-mode/`: config (with `compaction.annotateSummaries`), `MEMENTO.md`,
+  `MODEL_SPEC.md`, `AGENTS.snippet.md` and a short README. The MEMENTO template and AGENTS snippet
+  differ from the brief's in one place: a check is resolved by appending
+  `- C1 status: passed (R4)` rather than editing the line, so D3 stays strict (decision 1 above).
+  The snippet also tells the agent how to read the post-compaction supervisor note.
+
+## Not done or not verified
+
+- Reviewer quality (brief section 8, model-dependent criteria) is not measured: no model
+  credentials here. Procedure under "Reviewer evaluation" above.
+- Not run inside a live Pi session. All hooks are exercised through tests against the Pi 1.0.0
+  type declarations, with Pi's session and model layers mocked.
+- `reviewer.maxTokens` is not applied (`createAgentSession` has no option for it).
