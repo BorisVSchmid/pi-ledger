@@ -37,6 +37,8 @@ export interface LedgerState {
   registerGrewLastReview: boolean;
   /** Model files changed since the last review. */
   unreviewedEdits: boolean;
+  /** Hash of MODEL_SPEC.md when last read; null if absent, undefined if never read. */
+  specHash?: string | null;
 }
 
 export function emptyLedgerState(): LedgerState {

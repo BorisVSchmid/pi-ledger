@@ -1,6 +1,7 @@
 /**
- * Prompts for ledger mode. REVIEWER and LEDGER_TURN are copied verbatim from
- * ledger-mode-brief/prompts/. COMPACTION_NOTE is new: it checks a compaction
+ * Prompts for ledger mode. REVIEWER and LEDGER_TURN are copied from
+ * ledger-mode-brief/prompts/; REVIEWER now also covers flags already raised
+ * (openFlags, resolved, same_as), after a live run re-raised them. COMPACTION_NOTE is new: it checks a compaction
  * summary against the ledger (agreed with Boris, 2026-10-04).
  * A project can override each with .pi/REVIEWER.md, .pi/LEDGER_TURN.md,
  * .pi/COMPACTION_NOTE.md.
@@ -14,8 +15,10 @@ inconsistencies with evidence, as questions for the human.
 
 You receive, in this order:
   [Model Spec]      the human's statement of each concept (may be absent).
-  [Model Register]  what earlier reviews recorded: for each concept, its
-                    stated meaning and every place it is realised (code,
+  [Model Register]  what earlier reviews recorded: the flags already raised
+                    (openFlags: waiting for the human; resolved: the human
+                    marked them intended or dismissed), then for each concept
+                    its stated meaning and every place it is realised (code,
                     priors, data preparation, interpretation, ledger).
   [Ledger]          MEMENTO.md: Assumptions, Decisions, Checks, Observed,
                     Crossed out.
@@ -64,6 +67,10 @@ Conceptual (each part fine alone; together they encode two models):
   a two- or three-sentence argument for why it might not be deliberate.
 - Do not supply fixes, numbers or interpretations. Do not infer intent.
 - Prefer few strong findings over many weak ones. Empty lists are normal.
+- Do not raise again what openFlags or resolved already cover, even with
+  other quotes, other line numbers or a reworded question: the human has it.
+  Report it only if the evidence itself has changed, and then set "same_as"
+  to the id of the open flag it repeats.
 - Register edits record only what the artefacts show: which concept a piece
   of code, prior, data step or sentence realises, and which abstraction it
   uses there. Reuse existing concept ids; add a new id only for a concept not
@@ -81,7 +88,8 @@ Conceptual (each part fine alone; together they encode two models):
      "a": {"loc": "R/herd.R:42", "quote": "verbatim"},
      "b": {"loc": "R/region.R:88", "quote": "verbatim"},
      "argument": "two or three sentences",
-     "question": "one sentence ending with ?"}
+     "question": "one sentence ending with ?",
+     "same_as": "F3 (only when repeating an open flag; otherwise omit)"}
   ],
   "register_edits": [
     {"op": "stated", "concept": "P1 transmission", "value": "...", "source": "spec | user | ledger D2"},

@@ -8,7 +8,10 @@ import type { LedgerState } from './state.js';
 const oneLine = (s: string) => s.replace(/\r?\n/g, ' ').trim();
 
 export function renderFlag(f: Flag): string[] {
-  const lines = [`### ${f.id} · ${f.concept} · type ${f.type} · ${f.status} (turn ${f.turn})`];
+  const again = f.repeats ? ` · raised again ${f.repeats}× (last turn ${f.lastRaisedTurn})` : '';
+  const lines = [
+    `### ${f.id} · ${f.concept} · type ${f.type} · ${f.status} (turn ${f.turn})${again}`,
+  ];
   lines.push(`- A \`${f.a.loc}\`: ${oneLine(f.a.quote)}`);
   if (f.b) lines.push(`- B \`${f.b.loc}\`: ${oneLine(f.b.quote)}`);
   if (f.argument) lines.push(`- Why it may not be deliberate: ${oneLine(f.argument)}`);

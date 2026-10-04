@@ -318,3 +318,40 @@ brief 5.6 at once:
 - Not run inside a live Pi session. All hooks are exercised through tests against the Pi 1.0.0
   type declarations, with Pi's session and model layers mocked.
 - `reviewer.maxTokens` is not applied (`createAgentSession` has no option for it).
+
+## Fixes after the first live run (2026-10-04, Pi 1.0.0, master at 2080657)
+
+The live run on Boris's PC showed four problems. Defaults chosen, no questions asked:
+
+1. **Flag flood** (31 open flags in 13 turns, one issue raised 5-7 times).
+   - `[Model Register]` now starts with `openFlags` (id, concept, type, status, locations and the
+     question) and `resolved` (intended/dismissed with the human's reason). These are never
+     truncated; only the concept map is cut to `maxChars`. Before, open flags came after the
+     concepts, had no question text and were usually cut off.
+   - `REVIEWER_PROMPT` tells the reviewer not to raise again what `openFlags` or `resolved` cover,
+     and to set `"same_as": "F3"` when it repeats an open flag with changed evidence.
+   - Code-side merge (`addFlagResult`): a new flag is a repeat of an open or sent flag when the
+     concept resolves to the same key and every location of the flag with fewer sides is at a
+     location of the other (same `#` anchor, or same file with line ranges within 3 lines).
+     A repeat adds nothing; it bumps `repeats` on the existing flag, shown in FLAGS.md and the
+     register as "raised again N×". A `same_as` naming an open flag counts as a repeat.
+   - Against intended/dismissed flags only the exact quote-based suppression key applies, as
+     before: changed evidence at the same place is a new question for the human. A `same_as`
+     naming a resolved flag is ignored for the same reason.
+2. **Review loop.** `register_change` no longer fires on "the last review grew the register"
+   alone (almost every review adds a realization). It now needs an edit this turn: a model-file
+   hunk that touches a registered concept, any model-file hunk after the register grew, or a
+   change to `MODEL_SPEC.md`. Breakpoint and backstop triggers are unchanged.
+3. **Stale concept label.** `syncFromSpec` renames a register key whose `P<n>` id now has a
+   different spec heading, together with its flags and suppression keys, then applies the
+   spec's stated values. It runs at session start, before every review, and after any turn in
+   which `MODEL_SPEC.md` changed (tracked by `specHash` in the ledger state; the first sighting
+   is not counted as a change). A rename is shown as a notice and FLAGS.md is rewritten.
+4. **Flag visibility.** The notice after a review lists up to three new flags (id, concept,
+   question clipped to 140 chars), "…and N more", and the open flags raised again. Flags still
+   reach the agent only through `/flag <id> send` (the brief routes model-judged findings to
+   the human).
+
+Side effect: because the spec is now applied before each review, a spec statement always wins
+over a reviewer-stated value for the same concept (one fixture test updated accordingly).
+Tests: `tests/ledger-flag-fixes.test.ts` (13). Suite: 276 pass.

@@ -20,7 +20,14 @@ import {
 import { evaluateTurn, routeFindings, type FindingKind } from './monitor.js';
 import { addNotice, bump, LedgerStateStore, type LedgerState } from './state.js';
 import { renderFlagsFile } from './flags-file.js';
-import { addFlag, applyEdits, renderRegister, specStatements } from './register.js';
+import {
+  addFlagResult,
+  applyEdits,
+  renderRegister,
+  specStatements,
+  syncFromSpec,
+  type Flag,
+} from './register.js';
 import { callJson } from './model-call.js';
 import { COMPACTION_NOTE_PROMPT, LEDGER_TURN_PROMPT, REVIEWER_PROMPT } from './prompts.js';
 import {
@@ -33,6 +40,7 @@ import {
   coerceStaleItems,
   pickAgentSummary,
   renderCompactionNote,
+  reviewNotice,
   verifyReview,
   verifyStaleItems,
   type ReviewReason,
@@ -267,6 +275,8 @@ export class LedgerRuntime {
     if (newNotices > 0) await this.writeFlags(ctx, config);
     if (routed.steer) this.pi.sendUserMessage(routed.steer.text, { deliverAs: 'followUp' });
 
+    const specChanged = await this.checkSpec(ctx, config);
+
     const reason = automaticTrigger({
       turn: state.turn,
       lastReviewTurn: state.lastReviewTurn,
@@ -274,6 +284,7 @@ export class LedgerRuntime {
       modelEditsSinceReview: state.unreviewedEdits,
       register: state.register,
       registerGrewLastReview: state.registerGrewLastReview,
+      specChanged,
       ledgerBefore,
       ledgerAfter,
       triggers: config.reviewer.triggers,
@@ -381,6 +392,9 @@ export class LedgerRuntime {
       before = null;
     }
 
+    // Spec renames reach the register before the reviewer sees it.
+    if (spec) this.applySpec(spec);
+
     const userPrompt = buildReviewerPrompt({
       spec,
       register: state.register,
@@ -424,9 +438,13 @@ export class LedgerRuntime {
       (n, c) => n + 1 + c.realizations.length,
       0
     );
-    const created = verified.flags
-      .map((f) => addFlag(reg, f, state.turn))
-      .filter((f) => f !== null);
+    const created: Flag[] = [];
+    const repeatOf: string[] = [];
+    for (const f of verified.flags) {
+      const r = addFlagResult(reg, f, state.turn);
+      if (r.flag) created.push(r.flag);
+      else if (r.repeatOf) repeatOf.push(r.repeatOf);
+    }
     if (verified.restatement) reg.restatement = { text: verified.restatement, turn: state.turn };
 
     state.lastReviewTurn = state.turn;
@@ -434,6 +452,7 @@ export class LedgerRuntime {
     state.unreviewedEdits = false;
     bump(state, 'review.done');
     bump(state, 'review.flags_new', created.length);
+    bump(state, 'review.flags_repeat', repeatOf.length);
     bump(state, 'review.flags_dropped_unverified', verified.droppedFlags);
     bump(state, 'review.edits_dropped_unverified', verified.droppedEdits);
     this.store.persist();
@@ -442,9 +461,7 @@ export class LedgerRuntime {
     await this.exportRegister(ctx, config);
     await this.writeFlags(ctx, config);
     ctx.ui.notify(
-      `Supervisor review: ${created.length} new question(s)` +
-        (verified.droppedFlags ? `, ${verified.droppedFlags} dropped (quotes not found)` : '') +
-        (created.length ? ' — see /flag' : ''),
+      reviewNotice(created, repeatOf, verified.droppedFlags),
       created.length ? 'warning' : 'info'
     );
   }
@@ -513,15 +530,47 @@ export class LedgerRuntime {
     );
   }
 
+  /**
+   * Apply MODEL_SPEC.md to the register: renamed headings rename their concept
+   * (and its flags), stated values are updated. Records the spec's hash.
+   */
+  private applySpec(spec: string): Array<[string, string]> {
+    const state = this.state();
+    state.specHash = hashText(spec);
+    const renames = syncFromSpec(state.register, spec, state.turn);
+    if (renames.length) bump(state, 'spec.renames', renames.length);
+    return renames;
+  }
+
+  /** After a turn: if MODEL_SPEC.md changed, re-sync the register. Returns whether it changed. */
+  private async checkSpec(ctx: ExtensionContext, config: LedgerConfig): Promise<boolean> {
+    const state = this.state();
+    const spec = await readTextOrNull(path.resolve(ctx.cwd, config.files.spec));
+    const hash = spec === null ? null : hashText(spec);
+    const known = state.specHash;
+    if (hash === known) return false;
+    state.specHash = hash;
+    if (spec !== null) {
+      const renames = this.applySpec(spec);
+      for (const [from, to] of renames)
+        ctx.ui.notify(`Supervisor: concept "${from}" renamed to "${to}" (MODEL_SPEC.md).`, 'info');
+      await this.exportRegister(ctx, config);
+      if (renames.length) await this.writeFlags(ctx, config);
+    }
+    this.store.persist();
+    // The first sighting of the spec (old state, or extension loaded late) is not an edit.
+    return known !== undefined;
+  }
+
   /** Seed stated meanings from MODEL_SPEC.md (session start). Returns the number of concepts seeded. */
   async seedFromSpec(ctx: ExtensionContext, config: LedgerConfig): Promise<number> {
     const spec = await readTextOrNull(path.resolve(ctx.cwd, config.files.spec));
     if (!spec) return 0;
+    const renames = this.applySpec(spec);
     const edits = specStatements(spec);
-    if (edits.length === 0) return 0;
-    applyEdits(this.state().register, edits, this.state().turn);
     this.store.persist();
     await this.exportRegister(ctx, config);
+    if (renames.length) await this.writeFlags(ctx, config);
     return edits.length;
   }
 
