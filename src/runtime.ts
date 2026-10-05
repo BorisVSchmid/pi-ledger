@@ -92,6 +92,8 @@ export interface LedgerState {
   specHash?: string | null;
   /** The spec at the end of the last observed turn; undefined before the first. */
   previousSpecText?: string | null;
+  /** A run started and has not settled yet; still true at the next start if it was killed. */
+  runOpen?: boolean;
   /** `${kind}:${ledgerHash}` of every steer sent; a key is never sent twice. */
   steerHistory: string[];
   notices: Notice[];
@@ -248,7 +250,12 @@ export class LedgerRuntime {
       this.snapshot(ctx, config),
     ]);
     this.baseline = { ledger, snapshot };
-    if (this.s.turn === 0) return null;
+    const interrupted = this.s.runOpen === true;
+    this.s.runOpen = true;
+    if (this.s.turn === 0) {
+      this.persist();
+      return null;
+    }
 
     const changed: string[] = [];
     const describe = (file: string, before: string | null, after: string | null) => {
@@ -264,15 +271,19 @@ export class LedgerRuntime {
       const notes = new Set([config.files.ledger, config.files.spec]);
       for (const f of [...d.changed, ...d.added, ...d.removed]) if (!notes.has(f)) changed.push(f);
     }
-    if (changed.length === 0) return null;
+    if (changed.length === 0) {
+      this.persist();
+      return null;
+    }
     bump(this.s, 'outside_edit');
     this.persist();
-    return renderOutsideEdit(changed);
+    return renderOutsideEdit(changed, interrupted);
   }
 
   async onSettled(ctx: ExtensionContext, config: LedgerConfig): Promise<void> {
     const state = this.s;
     state.turn++;
+    state.runOpen = false;
 
     const ledgerAfter = await readTextOrNull(this.file(ctx, config.files.ledger));
     const after = await this.snapshot(ctx, config);
@@ -668,9 +679,11 @@ export class LedgerRuntime {
 }
 
 /** The note sent when the ledger or spec changed between turns. */
-export function renderOutsideEdit(changed: string[]): string {
+export function renderOutsideEdit(changed: string[], interrupted = false): string {
   return [
-    'Ledger: these files changed since your last turn, and not by you:',
+    interrupted
+      ? 'Ledger: these files changed since your last completed turn. That turn was interrupted, so some of the changes may be your own:'
+      : 'Ledger: these files changed since your last turn, and not by you:',
     ...changed.map((c) => `- ${c}`),
     'What you remember of them is out of date. Re-read the changed sections before you rely on them or describe them.',
   ].join('\n');

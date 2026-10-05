@@ -201,11 +201,23 @@ describe('stale open flags', () => {
 describe('ledger growth and AC status placement', () => {
   it('shows the word count, and says what to condense when over the target', () => {
     const short = '# Q\n\n## Acceptance (locked)\n- AC1: x\n';
-    expect(statusDetail(short)).toMatch(/^Ledger: \d+ words\.$/m);
+    expect(statusDetail(short)).toMatch(
+      /^Ledger: \d+ words, \d+ outside Acceptance and Checks\.$/m
+    );
     const long = short + '\n## Observed\n' + '- O1: word '.repeat(800) + '\n';
     expect(statusDetail(long)).toMatch(
-      /Ledger: 2,4\d\d words, over the ~2,000-word target\. Condense Observed and Crossed out/
+      /Ledger: 2,4\d\d words, 2,4\d\d outside Acceptance and Checks, over the ~2,000-word target for those sections\. Condense Observed/
     );
+  });
+
+  it('does not count locked Checks toward the target', () => {
+    const md =
+      '# Q\n\n## Checks (locked, written before the run)\n' +
+      '- C1: word '.repeat(1500) +
+      '\n## Observed\n- O1: short\n';
+    const detail = statusDetail(md);
+    expect(detail).toMatch(/Ledger: 4,5\d\d words, \d outside Acceptance and Checks\./);
+    expect(detail).not.toMatch(/over the/);
   });
 
   it('counts an AC status line written under Checks', () => {
@@ -262,6 +274,18 @@ describe('ledger or spec edited between turns', () => {
     await h.turn();
     h.edit('R/fit.R', (s) => s + '\n# swapped in by hand\n');
     expect(await h.rt.onAgentStart(h.ctx, h.config)).toMatch(/- R\/fit\.R/);
+  });
+
+  it("after an interrupted turn, says the changes may be the agent's own", async () => {
+    h = harness();
+    await h.turn();
+    await h.rt.onAgentStart(h.ctx, h.config);
+    // The run is killed mid-turn: no agent_settled, and the extension reloads.
+    h.edit('LEDGER.md', (s) => s + '- C9: written just before the kill\n');
+    h.rt.load(h.ctx);
+    const note = await h.rt.onAgentStart(h.ctx, h.config);
+    expect(note).toMatch(/interrupted, so some of the changes may be your own/);
+    expect(note).not.toMatch(/not by you/);
   });
 
   it('says nothing when only the agent edited the ledger', async () => {

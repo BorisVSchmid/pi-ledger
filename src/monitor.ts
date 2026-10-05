@@ -86,6 +86,13 @@ export function changedSections(previousMd: string, nextMd: string): string[] {
   return out;
 }
 
+export function isLockedHeading(heading: string, lockedHeadings = LOCKED_HEADINGS): boolean {
+  return (
+    /\(locked\)/i.test(heading) ||
+    lockedHeadings.some((k) => heading.toLowerCase().includes(k.toLowerCase()))
+  );
+}
+
 /** Headings whose existing lines were edited or removed (appends are allowed). */
 export function lockedSectionsChanged(
   previousMd: string,
@@ -94,8 +101,7 @@ export function lockedSectionsChanged(
 ): string[] {
   const prev = splitSections(previousMd);
   const next = splitSections(nextMd);
-  const isLocked = (h: string) =>
-    /\(locked\)/i.test(h) || lockedHeadings.some((k) => h.toLowerCase().includes(k.toLowerCase()));
+  const isLocked = (h: string) => isLockedHeading(h, lockedHeadings);
   const violated: string[] = [];
   for (const [heading, prevLines] of prev) {
     if (!isLocked(heading)) continue;
@@ -548,11 +554,22 @@ export function statusLine(input: {
   return parts.join(' · ');
 }
 
-/** The size the AGENTS.md snippet asks the agent to keep the ledger under. */
+/**
+ * The size the AGENTS.md snippet asks the agent to keep the ledger under,
+ * counting only the sections it may condense (not Acceptance or Checks).
+ */
 export const LEDGER_WORD_TARGET = 2000;
 
 export function wordCount(text: string): number {
   return text.split(/\s+/).filter(Boolean).length;
+}
+
+/** Words outside the locked sections, which the agent can condense. */
+export function condensableWordCount(ledgerText: string): number {
+  let n = 0;
+  for (const [heading, lines] of splitSections(ledgerText))
+    if (!isLockedHeading(heading)) n += wordCount(lines.join('\n'));
+  return n;
 }
 
 /** Multi-line detail for /ledger status: Acceptance items, then the ledger's size. */
@@ -565,11 +582,14 @@ export function statusDetail(ledgerText: string | null): string {
       : acc.items.map((i) => `${i.id} ${i.status}${i.run ? ` (${i.run})` : ''}: ${i.text}`);
   if (ledgerText !== null) {
     const n = wordCount(ledgerText);
+    const c = condensableWordCount(ledgerText);
     const fmt = (x: number) => x.toLocaleString('en-US');
+    const size =
+      c === n ? `${fmt(n)} words` : `${fmt(n)} words, ${fmt(c)} outside Acceptance and Checks`;
     lines.push(
-      n > LEDGER_WORD_TARGET
-        ? `Ledger: ${fmt(n)} words, over the ~${fmt(LEDGER_WORD_TARGET)}-word target. Condense Observed and Crossed out (full text to LEDGER.archive.md); Acceptance and Checks stay as written.`
-        : `Ledger: ${fmt(n)} words.`
+      c > LEDGER_WORD_TARGET
+        ? `Ledger: ${size}, over the ~${fmt(LEDGER_WORD_TARGET)}-word target for those sections. Condense Observed and Crossed out (full text to LEDGER.archive.md); Acceptance and Checks stay as written.`
+        : `Ledger: ${size}.`
     );
   }
   return lines.join('\n');

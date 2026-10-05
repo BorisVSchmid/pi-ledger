@@ -16,8 +16,9 @@
   exists, held-out evidence.
 - When a result refutes a recorded item, move it to Crossed out with the run
   id and a one-line reason. Keep full text in LEDGER.archive.md.
-- Edit sections in place; never regenerate the whole file. Keep it under
-  ~2,000 words (`/ledger status` shows the count). To make room, condense
+- Edit sections in place; never regenerate the whole file. Keep the sections
+  other than Acceptance and Checks under ~2,000 words (`/ledger status` shows
+  the count). To make room, condense
   Observed (one line per result; superseded results go to Crossed out),
   Crossed out (one-line tombstones), done Next items (remove them) and tested
   Assumptions, and move the full text to LEDGER.archive.md. Never condense,

@@ -104,7 +104,7 @@ A flag whose quote is gone, say about a Next item that has since been replaced, 
 answers an open flag (its quote is verified); the flag is marked `possibly answered by
 LEDGER.md#D7`. The digest after each review lists all such flags so you can close them.
 
-**Ledger size.** The snippet asks the agent to keep `LEDGER.md` under about 2,000 words by
+**Ledger size.** The snippet asks the agent to keep `LEDGER.md`, outside Acceptance and Checks, under about 2,000 words by
 condensing Observed, Crossed out, done Next items and tested Assumptions into
 `LEDGER.archive.md`. Acceptance and Checks are never condensed or moved. `/ledger status` shows
 the word count.
