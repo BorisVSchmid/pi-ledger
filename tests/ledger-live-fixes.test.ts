@@ -201,11 +201,23 @@ describe('stale open flags', () => {
 describe('ledger growth and AC status placement', () => {
   it('shows the word count, and says what to condense when over the target', () => {
     const short = '# Q\n\n## Acceptance (locked)\n- AC1: x\n';
-    expect(statusDetail(short)).toMatch(/^Ledger: \d+ words\.$/m);
+    expect(statusDetail(short)).toMatch(
+      /^Ledger: \d+ words, \d+ outside Acceptance and Checks\.$/m
+    );
     const long = short + '\n## Observed\n' + '- O1: word '.repeat(800) + '\n';
     expect(statusDetail(long)).toMatch(
-      /Ledger: 2,4\d\d words, over the ~2,000-word target\. Condense Observed and Crossed out/
+      /Ledger: 2,4\d\d words, 2,4\d\d outside Acceptance and Checks, over the ~2,000-word target for those sections\. Condense Observed/
     );
+  });
+
+  it('does not count locked Checks toward the target', () => {
+    const md =
+      '# Q\n\n## Checks (locked, written before the run)\n' +
+      '- C1: word '.repeat(1500) +
+      '\n## Observed\n- O1: short\n';
+    const detail = statusDetail(md);
+    expect(detail).toMatch(/Ledger: 4,5\d\d words, \d outside Acceptance and Checks\./);
+    expect(detail).not.toMatch(/over the/);
   });
 
   it('counts an AC status line written under Checks', () => {
