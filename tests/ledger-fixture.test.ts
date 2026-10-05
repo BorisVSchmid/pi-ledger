@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { LedgerRuntime, COMPACTION_NOTE_TYPE } from '../src/runtime.js';
 import { defaultConfig, type LedgerConfig } from '../src/config.js';
-import { buildModelFilesBlock } from '../src/reviewer.js';
+import { buildModelFilesBlock, REVIEWER_PROMPT } from '../src/reviewer.js';
 import { closeFlag } from '../src/flags.js';
 import { parseJsonObject, type JsonCallResult } from '../src/model-session.js';
 
@@ -190,6 +190,33 @@ describe('reviewer verification on variant 1 (density-dependent copy)', () => {
     expect(prompt).toMatch(/### R\/region\.R {2}\(new lines 1-2; old 1-5\)/);
     expect(prompt).toMatch(/=== R\/transmission\.R\n1\| # Force of infection/);
     expect(prompt).toMatch(/\[Agent Summary\]\n\(The working agent's own description/);
+  });
+});
+
+describe('open pass: other errors (types 11 and 12)', () => {
+  it('keeps a verified one-sided finding and drops an invented one', async () => {
+    const h = await runVariant('4-immigration-closed');
+    const unitError = {
+      concept: 'P3 demography',
+      type: 11,
+      a: { loc: 'R/demography.R:4', quote: 'imm_rate * 12' },
+      argument: 'Times 12 turns a monthly rate into a yearly one, but every other rate is per day.',
+      question: 'Is imm_rate meant to be per month while the model runs per day?',
+    };
+    const invented = { ...unitError, a: { loc: 'R/demography.R:4', quote: 'imm_rate / 30' } };
+    h.replies.push({ ok: true, json: { flags: [unitError, invented] }, model: null } as any);
+    await h.rt.review(h.ctx, h.config, 'command');
+    const flags = h.rt.state().flags.flags;
+    expect(flags).toHaveLength(1);
+    expect(flags[0]).toMatchObject({ type: 11, b: null });
+    expect(h.rt.state().metrics['review.flags_dropped_unverified']).toBe(1);
+    rmSync(h.cwd, { recursive: true, force: true });
+  });
+
+  it('asks for the open pass in the reviewer prompt', () => {
+    expect(REVIEWER_PROMPT).toMatch(/Anything else wrong/);
+    expect(REVIEWER_PROMPT).toMatch(/ 11 /);
+    expect(REVIEWER_PROMPT).toMatch(/ 12 /);
   });
 });
 

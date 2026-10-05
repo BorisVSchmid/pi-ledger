@@ -90,6 +90,9 @@ raised, `LEDGER.md`, the model files with line numbers, the edits since the last
 agent's latest description of the model labelled as a claim. It looks for two places encoding two
 ideas of the same thing (density- vs frequency-dependent transmission, an external hazard plus an
 external compartment, per-week rates in a per-day model, seasonality in two layers, and so on).
+It then makes one open pass for anything else wrong: plain errors that contradict nothing (a
+month-to-year conversion in a per-day model, a function returning NA for part of the year) and
+checks that cannot fail because the model fixes the tested quantity. These may quote one place.
 Every quote and location is checked in code; findings that do not verify are dropped, and a
 question already open is merged into its flag rather than raised again. Prefer a reviewer from a
 different model family than the working agent.
