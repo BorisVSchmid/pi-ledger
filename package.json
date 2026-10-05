@@ -1,16 +1,16 @@
 {
   "name": "pi-ledger",
   "version": "0.1.0",
-  "description": "Surely You're Joking: a Pi extension that keeps a research session's ledger and model honest. Derived from pi-supervisor.",
-  "author": "Boris V. Schmid (derived from pi-supervisor by tintinweb, forked by monotykamary)",
+  "description": "Surely You're Joking: a Pi extension that keeps a research session's ledger and model honest.",
+  "author": "Boris V. Schmid",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/BorisVSchmid/pi-supervisor.git"
+    "url": "git+https://github.com/BorisVSchmid/pi-ledger.git"
   },
-  "homepage": "https://github.com/BorisVSchmid/pi-supervisor#readme",
+  "homepage": "https://github.com/BorisVSchmid/pi-ledger#readme",
   "bugs": {
-    "url": "https://github.com/BorisVSchmid/pi-supervisor/issues"
+    "url": "https://github.com/BorisVSchmid/pi-ledger/issues"
   },
   "keywords": [
     "pi-package",
