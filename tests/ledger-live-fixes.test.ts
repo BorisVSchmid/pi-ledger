@@ -264,6 +264,18 @@ describe('ledger or spec edited between turns', () => {
     expect(await h.rt.onAgentStart(h.ctx, h.config)).toMatch(/- R\/fit\.R/);
   });
 
+  it("after an interrupted turn, says the changes may be the agent's own", async () => {
+    h = harness();
+    await h.turn();
+    await h.rt.onAgentStart(h.ctx, h.config);
+    // The run is killed mid-turn: no agent_settled, and the extension reloads.
+    h.edit('LEDGER.md', (s) => s + '- C9: written just before the kill\n');
+    h.rt.load(h.ctx);
+    const note = await h.rt.onAgentStart(h.ctx, h.config);
+    expect(note).toMatch(/interrupted, so some of the changes may be your own/);
+    expect(note).not.toMatch(/not by you/);
+  });
+
   it('says nothing when only the agent edited the ledger', async () => {
     h = harness();
     await h.turn('Ledger: Next — added R7', () => h.edit('LEDGER.md', (s) => s + '- fit R7\n'));
