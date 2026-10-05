@@ -387,12 +387,24 @@ Conceptual (each part fine alone; together they encode two models):
      dependence estimated from herd prevalence alone).
  10  A latent state defined one way in the process model and another in the
      observation model (infected vs infectious; detectable vs diseased).
+Anything else wrong (after the types above, make one more open pass):
+ 11  An error that would give wrong results even though nothing contradicts
+     it: a wrong unit conversion, a function that returns NA/NaN for part of
+     its input range, a sign or indexing error, parameter values that make
+     the model behave unlike what the ledger or spec describes (a stated
+     epidemic with R0 below 1).
+ 12  A check or acceptance criterion that cannot fail, or that tests a
+     quantity the model fixes by construction (a peak month checked against
+     a forcing whose phase is hard-coded to that month).
+  Types 11 and 12 may have one side only (omit "b"). They are still
+  questions, not advice on where the research should go.
 
 ═══ RULES ═══
 - Think it through before answering; use your full reasoning budget.
 - Quote first. Every finding carries verbatim quotes with locations
   ("file:line" for code; "LEDGER.md#D2" or "MODEL_SPEC.md#P1" otherwise).
-  If you cannot quote both sides, do not report it.
+  If you cannot quote both sides, do not report it (types 11 and 12 need
+  one quote).
 - Many differences are deliberate. Write every finding as a question and give
   a two- or three-sentence argument for why it might not be deliberate.
 - Do not supply fixes, numbers or interpretations. Do not infer intent.

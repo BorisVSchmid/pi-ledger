@@ -17,7 +17,7 @@ export interface Side {
 export interface Flag {
   id: string;
   concept: string;
-  /** 1-6 code-level types, 7-10 conceptual types, 0 injection (see the reviewer prompt). */
+  /** 1-6 code-level, 7-10 conceptual, 11-12 other errors, 0 injection (see the reviewer prompt). */
   type: number;
   a: Side;
   b: Side | null;
