@@ -246,6 +246,7 @@ describe('ledger or spec edited between turns', () => {
     expect(note).toMatch(/not by you/);
     expect(note).toMatch(/LEDGER\.md \(Next\)/);
     expect(note).toMatch(/MODEL_SPEC\.md \(P5 Calving\)/);
+    expect(note).not.toMatch(/R\/fit\.R/);
     h.say('Ledger: unchanged');
     await h.rt.onSettled(h.ctx, h.config);
     await h.rt.pending;
@@ -254,6 +255,13 @@ describe('ledger or spec edited between turns', () => {
 
     expect(await h.rt.onAgentStart(h.ctx, h.config)).toBeNull();
     expect(h.rt.state().metrics.outside_edit).toBe(1);
+  });
+
+  it('names model files edited between turns', async () => {
+    h = harness();
+    await h.turn();
+    h.edit('R/fit.R', (s) => s + '\n# swapped in by hand\n');
+    expect(await h.rt.onAgentStart(h.ctx, h.config)).toMatch(/- R\/fit\.R/);
   });
 
   it('says nothing when only the agent edited the ledger', async () => {

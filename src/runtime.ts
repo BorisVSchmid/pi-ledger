@@ -237,9 +237,9 @@ export class LedgerRuntime {
    * still here is from a prompt that never ran and is replaced: keeping it
    * would count edits made between runs as this run's.
    *
-   * Returns a note for the agent when the ledger or spec changed since the
-   * last turn ended, i.e. someone else edited them between turns. What the
-   * agent remembers of those files is then out of date.
+   * Returns a note for the agent when the ledger, spec or model files changed
+   * since the last turn ended, i.e. someone else edited them between turns.
+   * What the agent remembers of those files is then out of date.
    */
   async onAgentStart(ctx: ExtensionContext, config: LedgerConfig): Promise<string | null> {
     const [ledger, spec, snapshot] = await Promise.all([
@@ -259,6 +259,11 @@ export class LedgerRuntime {
     describe(config.files.ledger, this.s.previousLedgerText, ledger);
     if (this.s.previousSpecText !== undefined)
       describe(config.files.spec, this.s.previousSpecText, spec);
+    if (this.lastSnapshot) {
+      const d = diffSnapshots(this.lastSnapshot, snapshot);
+      const notes = new Set([config.files.ledger, config.files.spec]);
+      for (const f of [...d.changed, ...d.added, ...d.removed]) if (!notes.has(f)) changed.push(f);
+    }
     if (changed.length === 0) return null;
     bump(this.s, 'outside_edit');
     this.persist();
