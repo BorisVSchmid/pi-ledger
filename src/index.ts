@@ -26,7 +26,7 @@ import {
   loadLedgerConfig,
   type LedgerConfig,
 } from './config.js';
-import { LedgerRuntime, readTextOrNull } from './runtime.js';
+import { LedgerRuntime, OUTSIDE_EDIT_TYPE, readTextOrNull } from './runtime.js';
 import { statusDetail, statusLine } from './monitor.js';
 
 const STATUS_KEY = 'ledger';
@@ -89,7 +89,9 @@ export default function (pi: ExtensionAPI) {
   // ---- Monitor ----
 
   pi.on('before_agent_start', async (_event, ctx) => {
-    if (enabled) await ledger.onAgentStart(ctx, config);
+    if (!enabled) return;
+    const note = await ledger.onAgentStart(ctx, config);
+    if (note) return { message: { customType: OUTSIDE_EDIT_TYPE, content: note, display: true } };
   });
 
   // agent_settled fires once Pi has fully settled: retries, overflow

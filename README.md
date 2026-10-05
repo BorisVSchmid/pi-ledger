@@ -114,6 +114,10 @@ only, and adds a separate note listing statements in the summary that differ fro
 note does not assume the ledger is right (it can be behind); it asks the agent to check which is
 current. The summary itself is not changed.
 
+**Edits between turns.** If `LEDGER.md`, `MODEL_SPEC.md` or a model file changed since the agent's
+last turn (you edited them), the next prompt carries a note naming the changed files and sections
+and asking the agent to re-read them rather than rely on what it remembers.
+
 **Output.** `.pi/FLAGS.md`: open questions, the reviewer's ten-line restatement of the model to
 compare with what you meant, and the monitor's notices.
 

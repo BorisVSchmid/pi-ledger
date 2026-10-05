@@ -39,8 +39,9 @@ export function parseLedgerLine(assistantText: string): LedgerLine {
   const matches = [...assistantText.matchAll(/^[*_`]*Ledger[*_`]*:[*_`]*\s*(.+?)\s*$/gm)];
   if (matches.length === 0) return { present: false, raw: null, claimsChange: false };
   const raw = matches[matches.length - 1][1].replace(/[*_`]+$/, '').trim();
-  // "unchanged", "none", "no change", optionally followed by a reason after a dash or colon.
-  const claimsChange = !/^(unchanged|none|no change)\b\.?(\s*([—–:-]|$).*)?$/i.test(raw);
+  // "unchanged", "none", "no change", optionally followed by a reason after
+  // punctuation ("unchanged. This was a pipeline check", "none (dry run)").
+  const claimsChange = !/^(unchanged|none|no change)\b\s*([.,;:—–(-].*)?$/i.test(raw);
   return { present: true, raw, claimsChange };
 }
 
@@ -69,6 +70,19 @@ export function splitSections(md: string): Map<string, string[]> {
     }
     out.get(current)!.push(line);
   }
+  return out;
+}
+
+/** Section headings (`##`, or "(preamble)") whose lines differ between two versions. */
+export function changedSections(previousMd: string, nextMd: string): string[] {
+  const before = splitSections(previousMd);
+  const after = splitSections(nextMd);
+  const out: string[] = [];
+  for (const [heading, lines] of after) {
+    const old = before.get(heading);
+    if (!old || old.join('\n').trim() !== lines.join('\n').trim()) out.push(heading);
+  }
+  for (const heading of before.keys()) if (!after.has(heading)) out.push(heading);
   return out;
 }
 
