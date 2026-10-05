@@ -20,14 +20,15 @@ ledger (`LEDGER.md`) keeps up with the work and that the model stays coherent, a
 to you as questions. It never pushes the agent to finish, narrow or change course, never judges
 whether the work is done, never runs anything, and never reads reasoning or tool output.
 
-It is derived from [pi-supervisor](https://github.com/monotykamary/pi-supervisor) (tintinweb's
-original, forked by monotykamary): it keeps that project's model-session and persistence
-infrastructure and has none of its goal supervision. See [CREDITS.md](CREDITS.md) for the lineage.
+pi-ledger is its own project. It started as a mode inside a fork of
+[pi-supervisor](https://github.com/monotykamary/pi-supervisor) and still uses that project's
+model-session and persistence code (MIT, notice kept in [LICENSE](LICENSE)), but shares none of its
+goal supervision. [CREDITS.md](CREDITS.md) gives the lineage and the designs it borrows.
 
 ## Install
 
 ```bash
-pi install https://github.com/BorisVSchmid/pi-supervisor@master
+pi install https://github.com/BorisVSchmid/pi-ledger@master
 # or load directly for development
 pi -e /path/to/this/repo/src/index.ts
 ```
@@ -121,6 +122,64 @@ and asking the agent to re-read them rather than rely on what it remembers.
 **Output.** `.pi/FLAGS.md`: open questions, the reviewer's ten-line restatement of the model to
 compare with what you meant, and the monitor's notices.
 
+## What has been shown, and what has not
+
+Tested so far in one project (bank vole and tree mast dynamics) and on scripted fixtures, with
+Sonnet 5.5 as the agent, from 2026-10-04 to 2026-10-05. Every sample below is small; read the
+numbers as first evidence, not as rates.
+
+**Shown to work**
+
+- **The note on edits between turns.** When a person changed the ledger, the spec or the code
+  between turns and then asked about it, agents without pi-ledger described the old spec or code
+  from memory in 7 of 7 replies; with pi-ledger's note, 0 of 3 did, because they re-read the files
+  (Fisher's exact test, p ≈ 0.008). This is pi-ledger's clearest measured benefit. Two other
+  memory extensions, pi-brain and pi-memento, did not prevent it.
+- **Flags that changed a research conclusion.** In a 13-batch real session (about $12 of agent
+  time) the reviewer raised that the model counted all voles while the data
+  counted adults (F63), that a parameter guard looked at held-out dates (F65), and that the
+  held-out score varied by 0.28 across random seeds (F67). Following them up, a clean test without
+  the leak failed: the held-out score spread from 0.45 to 1.20 across seeds, and the session's
+  acceptance criterion was ruled not robustly met. The earlier passing score had rested on the
+  leak and an unstable seed.
+- **Goals stayed coherent.** Across that session and an earlier 17-turn run with two forced
+  compactions, the agent did not act on a stale aim or retry a crossed-out idea, and recorded the
+  human's rulings when the goal changed.
+- **Detection on seeded mistakes.** On five fixtures with a planted contradiction (density
+  vs frequency transmission, weekly rates in a daily model, and so on) the reviewer found the
+  planted mistake 15 of 15 times, with the right type 14 of 15 times. Quote checking removed
+  unsupported flags (13 in the first live run).
+
+**Not shown**
+
+- **That the post-compaction note prevents drift.** In no arm of any live run (4 arms, then
+  10 repetitions with forced compaction) did an agent drift after compaction: with or without
+  pi-ledger, none retried a refuted idea and all followed the ledger's Next. Pi keeps the most
+  recent turns verbatim, which seems to be enough for Sonnet 5.5. The note was accurate and
+  heeded, but not needed. In a scripted test it named every stale statement in a summary 3 of 3
+  times; whether that matters for a weaker model or a longer session is untested. In one early
+  run the note did harm: it treated a stale ledger as true, and the agent retracted a correct
+  statement. The note now says the two "differ" and asks the agent to check which is current.
+- **That the reviewer finds more than an ordinary review.** Asked "Can you review this
+  project?", Opus 5.5 found every planted mistake as well (15 of 15), plus real bugs the reviewer
+  missed (a month-to-year conversion, an `NA` outside an interpolation range), and it raised design
+  problems that pi-ledger leaves alone by design. Once drift has reached the files, a plain review
+  catches it as well. What pi-ledger adds over such a review is that it runs without being asked,
+  checks its quotes, and keeps its questions until they are answered. There was no plain-review
+  arm in the real session, so whether one would also have caught F63, F65 and F67 is unknown.
+
+**Known weaknesses**
+
+- Flags pile up. The real session ended with 29 open flags, 22 of them marked evidence gone. A
+  flag reaches the agent only through `/flag send`, so someone has to read and close them.
+- Append-only does not mean unchanged. A post-hoc clarification appended under the locked
+  Acceptance section passed every check; only a person reading the ledger noticed it.
+- One project, one agent model, mostly one reviewer model. Fixtures held their mistakes in dead
+  code; mistakes wired into the running model are untested.
+
+Raw results: the drift runs, the plain-review comparison and the session reports are kept with
+the project's working files, not in this repository.
+
 ## Configuration
 
 Read from `.pi/ledger-config.json`, then `~/.pi/agent/ledger-config.json`. Every key is optional;
@@ -133,7 +192,7 @@ see [`examples/project/ledger-config.json`](examples/project/ledger-config.json)
 - `autoEnable` (default `true`): switch on at session start when `files.ledger` exists.
 - `reviewer.model` (`null` = the chat model), `reviewer.fallbackModel`, `reviewer.thinking`.
 - `files.ledger`, `files.spec`, `files.modelFiles`, `files.ignore` (archives are ignored by default).
-- Projects set up for the pi-supervisor fork keep working: `supervisor-config.json` is read when
+- Projects set up for the earlier pi-supervisor-based ledger mode keep working: `supervisor-config.json` is read when
   `ledger-config.json` is absent, other keys are ignored, and its `model` becomes the reviewer model.
 
 Override a built-in prompt by putting `REVIEWER.md` or `COMPACTION_NOTE.md` in the project's `.pi/`.

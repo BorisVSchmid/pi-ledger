@@ -121,7 +121,8 @@ off, no `/supervise`. Defaults taken without asking, per his preference:
 
 - **Same repository, new package name.** `package.json` is now `pi-ledger` 0.1.0, built on a
   branch of `BorisVSchmid/pi-supervisor`. Renaming the GitHub repository (or moving to a new one)
-  is Boris's call; `repository`/`homepage` point at the current repo until then. `LICENSE` keeps
+  is Boris's call; `repository`/`homepage` point at the current repo until then. (2026-10-05: the
+  in-repo name and URLs now say `BorisVSchmid/pi-ledger`; the GitHub rename is done in settings.) `LICENSE` keeps
   the upstream MIT notice unchanged.
 - **Removed:** `src/core`, `src/state`, `src/compaction`, `src/session/client.ts` and
   `response-parser.ts`, `src/ui/renderer.ts`/`animations.ts`/`types.ts`, `src/fabric-provider.ts`,

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Renamed throughout to pi-ledger (`BorisVSchmid/pi-ledger`); no longer described as a fork of pi-supervisor. The README now says what the tests so far have and have not shown.
 - An edit review no longer fires on a run that changed no model file: the per-run baseline is retaken at every `before_agent_start`, an edit review is skipped when the last review already saw the edited files, and the review notice names the files that started it (`reviewing the model (edit: R/fit.R)`).
 - Open flags whose quoted evidence no longer exists are marked `evidence gone` in `/flag` and `.pi/FLAGS.md`; the reviewer can mark an open flag as possibly answered by a ledger entry (quote verified). Neither closes a flag. The post-review digest lists these flags.
 - `/ledger status` shows the ledger's word count and, over ~2,000 words, what to condense. The AGENTS.md snippet and ledger template say what may be condensed or moved to `LEDGER.archive.md` (Observed, Crossed out, done Next items, tested Assumptions) and what may not (Acceptance, Checks), and that AC status lines go under Acceptance (one written elsewhere still counts).
