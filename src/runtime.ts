@@ -13,6 +13,7 @@ import path from 'node:path';
 import type { ExtensionAPI, ExtensionContext } from '@earendil-works/pi-coding-agent';
 import type { LedgerConfig } from './config.js';
 import {
+  changedSections,
   diffSnapshots,
   evaluateTurn,
   hashText,
@@ -63,6 +64,7 @@ import {
 /** Kept from pi-supervisor so sessions started under the fork still load. */
 export const LEDGER_ENTRY_TYPE = 'supervisor-ledger-state';
 export const COMPACTION_NOTE_TYPE = 'supervisor-compaction-note';
+export const OUTSIDE_EDIT_TYPE = 'supervisor-outside-edit';
 export const FLAGS_FILE = '.pi/FLAGS.md';
 /** Snapshot of model files at the last review, so [Model Edits] spans all turns since. */
 const REVIEW_SNAPSHOT_FILE = '.pi/ledger-review-snapshot.json';
@@ -88,6 +90,8 @@ export interface LedgerState {
   previousLedgerText: string | null;
   /** Hash of the spec when last read; null if absent, undefined if never read. */
   specHash?: string | null;
+  /** The spec at the end of the last observed turn; undefined before the first. */
+  previousSpecText?: string | null;
   /** `${kind}:${ledgerHash}` of every steer sent; a key is never sent twice. */
   steerHistory: string[];
   notices: Notice[];
@@ -232,13 +236,33 @@ export class LedgerRuntime {
    * (prompts queued during a run join it without a new event), so a baseline
    * still here is from a prompt that never ran and is replaced: keeping it
    * would count edits made between runs as this run's.
+   *
+   * Returns a note for the agent when the ledger or spec changed since the
+   * last turn ended, i.e. someone else edited them between turns. What the
+   * agent remembers of those files is then out of date.
    */
-  async onAgentStart(ctx: ExtensionContext, config: LedgerConfig): Promise<void> {
-    const [ledger, snapshot] = await Promise.all([
+  async onAgentStart(ctx: ExtensionContext, config: LedgerConfig): Promise<string | null> {
+    const [ledger, spec, snapshot] = await Promise.all([
       readTextOrNull(this.file(ctx, config.files.ledger)),
+      readTextOrNull(this.file(ctx, config.files.spec)),
       this.snapshot(ctx, config),
     ]);
     this.baseline = { ledger, snapshot };
+    if (this.s.turn === 0) return null;
+
+    const changed: string[] = [];
+    const describe = (file: string, before: string | null, after: string | null) => {
+      if (before === after) return;
+      const sections = before !== null && after !== null ? changedSections(before, after) : [];
+      changed.push(sections.length > 0 ? `${file} (${sections.join('; ')})` : file);
+    };
+    describe(config.files.ledger, this.s.previousLedgerText, ledger);
+    if (this.s.previousSpecText !== undefined)
+      describe(config.files.spec, this.s.previousSpecText, spec);
+    if (changed.length === 0) return null;
+    bump(this.s, 'outside_edit');
+    this.persist();
+    return renderOutsideEdit(changed);
   }
 
   async onSettled(ctx: ExtensionContext, config: LedgerConfig): Promise<void> {
@@ -290,6 +314,7 @@ export class LedgerRuntime {
 
     const spec = await readTextOrNull(this.file(ctx, config.files.spec));
     const specChanged = this.specChanged(spec);
+    state.previousSpecText = spec;
     const marksChanged = recheckEvidence(state.flags, (side) =>
       sideStillThere(side, this.verifyContext(config, after, ledgerAfter, spec))
     );
@@ -635,4 +660,13 @@ export class LedgerRuntime {
   async writeFlags(ctx: ExtensionContext): Promise<void> {
     await this.writeFile(ctx, FLAGS_FILE, renderFlagsFile(this.s.flags, this.s.notices));
   }
+}
+
+/** The note sent when the ledger or spec changed between turns. */
+export function renderOutsideEdit(changed: string[]): string {
+  return [
+    'Ledger: these files changed since your last turn, and not by you:',
+    ...changed.map((c) => `- ${c}`),
+    'What you remember of them is out of date. Re-read the changed sections before you rely on them or describe them.',
+  ].join('\n');
 }

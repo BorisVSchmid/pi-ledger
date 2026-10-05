@@ -45,6 +45,11 @@ describe('ledger line parsing (D1)', () => {
     expect(parseLedgerLine('Ledger: unchanged — nothing new')).toMatchObject({
       claimsChange: false,
     });
+    expect(parseLedgerLine('Ledger: unchanged. This was a pipeline check, not R7.')).toMatchObject({
+      claimsChange: false,
+    });
+    expect(parseLedgerLine('Ledger: none (dry run)')).toMatchObject({ claimsChange: false });
+    expect(parseLedgerLine('Ledger: unchanged except R6 added').claimsChange).toBe(true);
     expect(parseLedgerLine('Ledger: A2 — added immigration')).toMatchObject({ claimsChange: true });
     expect(parseLedgerLine('Ledger: unchangeable things noted').claimsChange).toBe(true);
   });

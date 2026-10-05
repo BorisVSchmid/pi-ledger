@@ -46,7 +46,7 @@ function harness() {
   const edit = (rel: string, f: (s: string) => string) =>
     writeFileSync(file(rel), f(readFileSync(file(rel), 'utf8')));
   const notices = () => ctx.ui.notify.mock.calls.map((c: any[]) => String(c[0]));
-  return { cwd, pi, ctx, config, rt, replies, turn, file, edit, notices };
+  return { cwd, pi, ctx, config, rt, replies, turn, file, edit, notices, say };
 }
 
 function reply(flags: unknown[], extra: Record<string, unknown> = {}): JsonCallResult {
@@ -224,5 +224,41 @@ describe('ledger growth and AC status placement', () => {
         state: { turn: 1, lastTurnFindings: [], flags: { flags: [] } },
       })
     ).toMatch(/^Acceptance 0\/1 passed, 1 failed/);
+  });
+});
+
+// Third live run (2026-10-05): after Boris swapped in a new ledger and spec
+// between turns, the agent described the old spec from memory.
+describe('ledger or spec edited between turns', () => {
+  let h: ReturnType<typeof harness>;
+  afterEach(() => rmSync(h.cwd, { recursive: true, force: true }));
+
+  it('tells the agent which sections changed, once', async () => {
+    h = harness();
+    expect(await h.rt.onAgentStart(h.ctx, h.config)).toBeNull(); // first run: no baseline yet
+    h.say('Ledger: unchanged');
+    await h.rt.onSettled(h.ctx, h.config);
+    await h.rt.pending;
+
+    h.edit('LEDGER.md', (s) => s.replace(/## Next[\s\S]*$/, '## Next\n- fit R7\n'));
+    h.edit('MODEL_SPEC.md', (s) => s + '\n## P5 Calving\n- births pulse in April\n');
+    const note = await h.rt.onAgentStart(h.ctx, h.config);
+    expect(note).toMatch(/not by you/);
+    expect(note).toMatch(/LEDGER\.md \(Next\)/);
+    expect(note).toMatch(/MODEL_SPEC\.md \(P5 Calving\)/);
+    h.say('Ledger: unchanged');
+    await h.rt.onSettled(h.ctx, h.config);
+    await h.rt.pending;
+    // The edit happened before the run, so it is not this run's unclaimed change.
+    expect(h.rt.state().lastTurnFindings).not.toContain('LEDGER_CHANGED_UNCLAIMED');
+
+    expect(await h.rt.onAgentStart(h.ctx, h.config)).toBeNull();
+    expect(h.rt.state().metrics.outside_edit).toBe(1);
+  });
+
+  it('says nothing when only the agent edited the ledger', async () => {
+    h = harness();
+    await h.turn('Ledger: Next — added R7', () => h.edit('LEDGER.md', (s) => s + '- fit R7\n'));
+    expect(await h.rt.onAgentStart(h.ctx, h.config)).toBeNull();
   });
 });
